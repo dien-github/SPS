@@ -1,6 +1,6 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 2.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 
 ApplicationWindow {
     visible: true
@@ -14,9 +14,9 @@ ApplicationWindow {
 
     Connections {
         target: authBackend
-        function onLoginSuccess(uid, teacherName) {
+        function onVLoginSuccess(uid, teacherName) {
             console.log("[QML]: Catch log in signal from D-Bus of " + teacherName)
-            szCurrentTeacher = teacherName
+            szTeacherName = teacherName
             bIsLocked = false
         }
     }
@@ -53,7 +53,7 @@ ApplicationWindow {
                 text: "SUCCESS"
                 Layout.alignment: Qt.AlignHCenter
                 onClicked: {
-                    authBackend.vSimulateRifdScan()
+                    authBackend.vSimulateRfidScan()
                 }
             }
         }
@@ -73,7 +73,7 @@ ApplicationWindow {
             spacing: 30
 
             Text {
-                text: "HELLO, " + szCurrentTeacher.toUpperCase()
+                text: "HELLO, " + szTeacherName.toUpperCase()
                 color: "#333"
                 font.pixelSize: 36
                 font.bold: true

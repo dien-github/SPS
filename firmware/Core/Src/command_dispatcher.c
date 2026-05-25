@@ -1,11 +1,16 @@
 #include "command_dispatcher.h"
 
+#include <string.h>
+
 #include "relay_service.h"
 #include "projector_service.h"
 #include "ir_service.h"
 #include "ota_service.h"
 
 extern osMessageQueueId_t relayQueueHandle;
+extern osMessageQueueId_t projectorQueueHandle;
+extern osMessageQueueId_t irQueueHandle;
+extern osMessageQueueId_t otaQueueHandle;
 
 static uint32_t RelayCmd_Pack(uint8_t sourceCmd,
                               uint8_t type,
@@ -16,21 +21,6 @@ static uint32_t RelayCmd_Pack(uint8_t sourceCmd,
             ((uint32_t)type      << RELAY_CMD_TYPE_SHIFT)   |
             ((uint32_t)deviceId  << RELAY_CMD_DEVICE_SHIFT) |
             ((uint32_t)action    << RELAY_CMD_ACTION_SHIFT));
-}
-
-static DispatchResult_t Dispatch_FromOtaResult(OtaResult_t otaResult)
-{
-    if (otaResult == OTA_RESULT_OK)
-    {
-        return DISPATCH_RESULT_OK;
-    }
-
-    if (otaResult == OTA_RESULT_INVALID_PARAM)
-    {
-        return DISPATCH_RESULT_INVALID_PARAM;
-    }
-
-    return DISPATCH_RESULT_OTA_ERROR;
 }
 
 DispatchResult_t Command_DispatchFrame(const SPS_Frame_t *frame)
@@ -94,23 +84,19 @@ DispatchResult_t Command_DispatchFrame(const SPS_Frame_t *frame)
 
         case SPS_CMD_PROJECTOR_CONTROL:
         {
-            ProjectorResult_t projectorResult;
+            ProjectorCommand_t projectorCmd;
 
             if (frame->length != 1U)
             {
                 return DISPATCH_RESULT_INVALID_PARAM;
             }
 
-            projectorResult = Projector_Service_Control(frame->payload[0]);
+            projectorCmd.sourceCmd = frame->cmd_id;
+            projectorCmd.action = frame->payload[0];
 
-            if (projectorResult == PROJECTOR_RESULT_INVALID_PARAM)
+            if (osMessageQueuePut(projectorQueueHandle, &projectorCmd, 0U, 0U) != osOK)
             {
-                return DISPATCH_RESULT_INVALID_PARAM;
-            }
-
-            if (projectorResult == PROJECTOR_RESULT_UART_ERROR)
-            {
-                return DISPATCH_RESULT_PROJECTOR_ERROR;
+                return DISPATCH_RESULT_QUEUE_FULL;
             }
 
             return DISPATCH_RESULT_OK;
@@ -118,19 +104,20 @@ DispatchResult_t Command_DispatchFrame(const SPS_Frame_t *frame)
 
         case SPS_CMD_AC_CONTROL:
         {
-            IrResult_t irResult;
+            IrCommand_t irCmd;
 
             if (frame->length != 2U)
             {
                 return DISPATCH_RESULT_INVALID_PARAM;
             }
 
-            irResult = IR_Service_ControlAC(frame->payload[0],
-                                            frame->payload[1]);
+            irCmd.sourceCmd = frame->cmd_id;
+            irCmd.acId = frame->payload[0];
+            irCmd.action = frame->payload[1];
 
-            if (irResult == IR_RESULT_INVALID_PARAM)
+            if (osMessageQueuePut(irQueueHandle, &irCmd, 0U, 0U) != osOK)
             {
-                return DISPATCH_RESULT_INVALID_PARAM;
+                return DISPATCH_RESULT_QUEUE_FULL;
             }
 
             return DISPATCH_RESULT_OK;
@@ -138,59 +125,84 @@ DispatchResult_t Command_DispatchFrame(const SPS_Frame_t *frame)
 
         case SPS_CMD_OTA_START:
         {
-            uint32_t firmwareSize;
-            OtaResult_t otaResult;
+            OtaCommand_t otaCmd;
 
             if (frame->length != 4U)
             {
                 return DISPATCH_RESULT_INVALID_PARAM;
             }
 
-            firmwareSize = ((uint32_t)frame->payload[0]) |
-                           ((uint32_t)frame->payload[1] << 8) |
-                           ((uint32_t)frame->payload[2] << 16) |
-                           ((uint32_t)frame->payload[3] << 24);
+            otaCmd.sourceCmd = frame->cmd_id;
+            otaCmd.type = OTA_COMMAND_START;
+            otaCmd.firmwareSize = ((uint32_t)frame->payload[0]) |
+                                  ((uint32_t)frame->payload[1] << 8) |
+                                  ((uint32_t)frame->payload[2] << 16) |
+                                  ((uint32_t)frame->payload[3] << 24);
+            otaCmd.chunkIndex = 0U;
+            otaCmd.dataLength = 0U;
 
-            otaResult = OTA_Service_Start(firmwareSize);
+            if (osMessageQueuePut(otaQueueHandle, &otaCmd, 0U, 0U) != osOK)
+            {
+                return DISPATCH_RESULT_QUEUE_FULL;
+            }
 
-            return Dispatch_FromOtaResult(otaResult);
+            return DISPATCH_RESULT_OK;
         }
 
         case SPS_CMD_OTA_CHUNK:
         {
-            uint8_t chunkIndex;
-            const uint8_t *chunkData;
+            OtaCommand_t otaCmd;
             uint8_t chunkLength;
-            OtaResult_t otaResult;
 
             if (frame->length < 2U)
             {
                 return DISPATCH_RESULT_INVALID_PARAM;
             }
 
-            chunkIndex = frame->payload[0];
-            chunkData = &frame->payload[1];
             chunkLength = (uint8_t)(frame->length - 1U);
 
-            otaResult = OTA_Service_WriteChunk(chunkIndex,
-                                               chunkData,
-                                               chunkLength);
+            if (chunkLength > OTA_COMMAND_MAX_DATA_SIZE)
+            {
+                return DISPATCH_RESULT_INVALID_PARAM;
+            }
 
-            return Dispatch_FromOtaResult(otaResult);
+            memset(&otaCmd, 0, sizeof(otaCmd));
+
+            otaCmd.sourceCmd = frame->cmd_id;
+            otaCmd.type = OTA_COMMAND_CHUNK;
+            otaCmd.chunkIndex = frame->payload[0];
+            otaCmd.dataLength = chunkLength;
+
+            memcpy(otaCmd.data, &frame->payload[1], chunkLength);
+
+            if (osMessageQueuePut(otaQueueHandle, &otaCmd, 0U, 0U) != osOK)
+            {
+                return DISPATCH_RESULT_QUEUE_FULL;
+            }
+
+            return DISPATCH_RESULT_OK;
         }
 
         case SPS_CMD_OTA_END:
         {
-            OtaResult_t otaResult;
+            OtaCommand_t otaCmd;
 
             if (frame->length != 0U)
             {
                 return DISPATCH_RESULT_INVALID_PARAM;
             }
 
-            otaResult = OTA_Service_End();
+            memset(&otaCmd, 0, sizeof(otaCmd));
 
-            return Dispatch_FromOtaResult(otaResult);
+            otaCmd.sourceCmd = frame->cmd_id;
+            otaCmd.type = OTA_COMMAND_END;
+
+            if (osMessageQueuePut(otaQueueHandle, &otaCmd, 0U, 0U) != osOK)
+            {
+                return DISPATCH_RESULT_QUEUE_FULL;
+            }
+
+            return DISPATCH_RESULT_OK;
         }
 
         default:

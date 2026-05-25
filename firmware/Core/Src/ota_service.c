@@ -124,3 +124,28 @@ uint32_t OTA_Service_GetReceivedSize(void)
 {
     return otaReceivedSize;
 }
+
+OtaResult_t OTA_Service_ExecuteCommand(const OtaCommand_t *cmd)
+{
+    if (cmd == NULL)
+    {
+        return OTA_RESULT_INVALID_PARAM;
+    }
+
+    switch (cmd->type)
+    {
+        case OTA_COMMAND_START:
+            return OTA_Service_Start(cmd->firmwareSize);
+
+        case OTA_COMMAND_CHUNK:
+            return OTA_Service_WriteChunk(cmd->chunkIndex,
+                                          cmd->data,
+                                          cmd->dataLength);
+
+        case OTA_COMMAND_END:
+            return OTA_Service_End();
+
+        default:
+            return OTA_RESULT_INVALID_PARAM;
+    }
+}

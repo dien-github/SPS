@@ -3,6 +3,9 @@ Release/
 build/
 cmake-build-*/
 
+.settings/
+.metadata/
+
 *.elf
 *.hex
 *.bin
@@ -12,14 +15,3 @@ cmake-build-*/
 *.d
 *.su
 *.cyclo
-
-.metadata/
-.settings/
-
-*.log
-*.bak
-*.tmp
-*.old
-
-.DS_Store
-Thumbs.db

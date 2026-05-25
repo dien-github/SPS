@@ -44,6 +44,9 @@
 #define UART_RX_DMA_BUFFER_SIZE 256U
 #define UART_QUEUE_SIZE         256U
 #define RELAY_QUEUE_SIZE        10U
+#define PROJECTOR_QUEUE_SIZE    5U
+#define IR_QUEUE_SIZE           5U
+#define OTA_QUEUE_SIZE          5U
 #define UART_TX_TIMEOUT_MS      100U
 /* USER CODE END PD */
 
@@ -81,6 +84,30 @@ const osThreadAttr_t relayTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+/* Definitions for projectorTask */
+osThreadId_t projectorTaskHandle;
+const osThreadAttr_t projectorTask_attributes = {
+  .name = "projectorTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+/* Definitions for irTask */
+osThreadId_t irTaskHandle;
+const osThreadAttr_t irTask_attributes = {
+  .name = "irTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+/* Definitions for otaTask */
+osThreadId_t otaTaskHandle;
+const osThreadAttr_t otaTask_attributes = {
+  .name = "otaTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 /* Definitions for uartQueue */
 osMessageQueueId_t uartQueueHandle;
 const osMessageQueueAttr_t uartQueue_attributes = {
@@ -91,6 +118,24 @@ const osMessageQueueAttr_t uartQueue_attributes = {
 osMessageQueueId_t relayQueueHandle;
 const osMessageQueueAttr_t relayQueue_attributes = {
   .name = "relayQueue"
+};
+
+/* Definitions for projectorQueue */
+osMessageQueueId_t projectorQueueHandle;
+const osMessageQueueAttr_t projectorQueue_attributes = {
+  .name = "projectorQueue"
+};
+
+/* Definitions for irQueue */
+osMessageQueueId_t irQueueHandle;
+const osMessageQueueAttr_t irQueue_attributes = {
+  .name = "irQueue"
+};
+
+/* Definitions for otaQueue */
+osMessageQueueId_t otaQueueHandle;
+const osMessageQueueAttr_t otaQueue_attributes = {
+  .name = "otaQueue"
 };
 
 /* Definitions for uartTxMutex */
@@ -110,6 +155,9 @@ static void App_HandleRelayStatus(const SPS_Frame_t *frame);
 void StartUartRxTask(void *argument);
 void StartCommandTask(void *argument);
 void StartRelayTask(void *argument);
+void StartProjectorTask(void *argument);
+void StartIrTask(void *argument);
+void StartOtaTask(void *argument);
 
 void MX_FREERTOS_Init(void);
 
@@ -140,21 +188,33 @@ void MX_FREERTOS_Init(void)
   /* Create the queue(s) */
   uartQueueHandle = osMessageQueueNew(UART_QUEUE_SIZE, sizeof(uint8_t), &uartQueue_attributes);
   relayQueueHandle = osMessageQueueNew(RELAY_QUEUE_SIZE, sizeof(uint32_t), &relayQueue_attributes);
+  projectorQueueHandle = osMessageQueueNew(PROJECTOR_QUEUE_SIZE, sizeof(ProjectorCommand_t), &projectorQueue_attributes);
+  irQueueHandle = osMessageQueueNew(IR_QUEUE_SIZE, sizeof(IrCommand_t), &irQueue_attributes);
+  otaQueueHandle = osMessageQueueNew(OTA_QUEUE_SIZE, sizeof(OtaCommand_t), &otaQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   configASSERT(uartQueueHandle != NULL);
   configASSERT(relayQueueHandle != NULL);
+  configASSERT(projectorQueueHandle != NULL);
+  configASSERT(irQueueHandle != NULL);
+  configASSERT(otaQueueHandle != NULL);
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
   uartRxTaskHandle = osThreadNew(StartUartRxTask, NULL, &uartRxTask_attributes);
   commandTaskHandle = osThreadNew(StartCommandTask, NULL, &commandTask_attributes);
   relayTaskHandle = osThreadNew(StartRelayTask, NULL, &relayTask_attributes);
+  projectorTaskHandle = osThreadNew(StartProjectorTask, NULL, &projectorTask_attributes);
+  irTaskHandle = osThreadNew(StartIrTask, NULL, &irTask_attributes);
+  otaTaskHandle = osThreadNew(StartOtaTask, NULL, &otaTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   configASSERT(uartRxTaskHandle != NULL);
   configASSERT(commandTaskHandle != NULL);
   configASSERT(relayTaskHandle != NULL);
+  configASSERT(projectorTaskHandle != NULL);
+  configASSERT(irTaskHandle != NULL);
+  configASSERT(otaTaskHandle != NULL);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -201,9 +261,6 @@ void StartCommandTask(void *argument)
   SPS_Frame_t frame;
 
   SPS_Protocol_Init();
-  IR_Service_Init();
-  Projector_Service_Init();
-  OTA_Service_Init();
 
   for (;;)
   {
@@ -255,15 +312,13 @@ void StartCommandTask(void *argument)
           }
           else
           {
-            if ((frame.cmd_id == SPS_CMD_PROJECTOR_CONTROL) ||
-                (frame.cmd_id == SPS_CMD_AC_CONTROL) ||
-                (frame.cmd_id == SPS_CMD_OTA_START) ||
-                (frame.cmd_id == SPS_CMD_OTA_CHUNK) ||
-                (frame.cmd_id == SPS_CMD_OTA_END))
-            {
-              App_SendAck(frame.cmd_id);
-            }
-
+        	  /*
+        	   * Các command có task riêng sẽ không ACK ở commandTask:
+        	   * - Relay: relayTask ACK sau khi GPIO thực thi xong.
+        	   * - Projector: projectorTask ACK sau khi USART2 xử lý xong.
+        	   * - IR: irTask ACK sau khi phát IR xong.
+        	   * - OTA: otaTask ACK sau khi xử lý OTA xong.
+        	   */
             /*
              * Relay command không ACK ở commandTask.
              * relayTask sẽ ACK sau khi GPIO thực thi xong.
@@ -323,6 +378,127 @@ void StartRelayTask(void *argument)
   }
 
   /* USER CODE END StartRelayTask */
+}
+/* USER CODE BEGIN Header_StartProjectorTask */
+/**
+* @brief Function implementing the projectorTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartProjectorTask */
+void StartProjectorTask(void *argument)
+{
+  /* USER CODE BEGIN StartProjectorTask */
+
+  ProjectorCommand_t projectorCmd;
+  ProjectorResult_t result;
+
+  (void)argument;
+
+  Projector_Service_Init();
+
+  for (;;)
+  {
+    if (osMessageQueueGet(projectorQueueHandle, &projectorCmd, NULL, osWaitForever) == osOK)
+    {
+      result = Projector_Service_ExecuteCommand(&projectorCmd);
+
+      if (result == PROJECTOR_RESULT_OK)
+      {
+        App_SendAck(projectorCmd.sourceCmd);
+      }
+      else if (result == PROJECTOR_RESULT_INVALID_PARAM)
+      {
+        App_SendNack(projectorCmd.sourceCmd, SPS_ERR_INVALID_PARAM);
+      }
+      else
+      {
+        App_SendNack(projectorCmd.sourceCmd, SPS_ERR_TIMEOUT);
+      }
+    }
+  }
+
+  /* USER CODE END StartProjectorTask */
+}
+
+/* USER CODE BEGIN Header_StartIrTask */
+/**
+* @brief Function implementing the irTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartIrTask */
+void StartIrTask(void *argument)
+{
+  /* USER CODE BEGIN StartIrTask */
+
+  IrCommand_t irCmd;
+  IrResult_t result;
+
+  (void)argument;
+
+  IR_Service_Init();
+
+  for (;;)
+  {
+    if (osMessageQueueGet(irQueueHandle, &irCmd, NULL, osWaitForever) == osOK)
+    {
+      result = IR_Service_ExecuteCommand(&irCmd);
+
+      if (result == IR_RESULT_OK)
+      {
+        App_SendAck(irCmd.sourceCmd);
+      }
+      else
+      {
+        App_SendNack(irCmd.sourceCmd, SPS_ERR_INVALID_PARAM);
+      }
+    }
+  }
+
+  /* USER CODE END StartIrTask */
+}
+
+/* USER CODE BEGIN Header_StartOtaTask */
+/**
+* @brief Function implementing the otaTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartOtaTask */
+void StartOtaTask(void *argument)
+{
+  /* USER CODE BEGIN StartOtaTask */
+
+  OtaCommand_t otaCmd;
+  OtaResult_t result;
+
+  (void)argument;
+
+  OTA_Service_Init();
+
+  for (;;)
+  {
+    if (osMessageQueueGet(otaQueueHandle, &otaCmd, NULL, osWaitForever) == osOK)
+    {
+      result = OTA_Service_ExecuteCommand(&otaCmd);
+
+      if (result == OTA_RESULT_OK)
+      {
+        App_SendAck(otaCmd.sourceCmd);
+      }
+      else if (result == OTA_RESULT_INVALID_PARAM)
+      {
+        App_SendNack(otaCmd.sourceCmd, SPS_ERR_INVALID_PARAM);
+      }
+      else
+      {
+        App_SendNack(otaCmd.sourceCmd, SPS_ERR_OTA);
+      }
+    }
+  }
+
+  /* USER CODE END StartOtaTask */
 }
 
 /* Private application code --------------------------------------------------*/

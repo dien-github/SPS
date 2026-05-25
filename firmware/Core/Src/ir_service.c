@@ -43,3 +43,12 @@ IrResult_t IR_Service_ControlAC(uint8_t acId, uint8_t action)
 
     return IR_RESULT_OK;
 }
+IrResult_t IR_Service_ExecuteCommand(const IrCommand_t *cmd)
+{
+    if (cmd == NULL)
+    {
+        return IR_RESULT_INVALID_PARAM;
+    }
+
+    return IR_Service_ControlAC(cmd->acId, cmd->action);
+}

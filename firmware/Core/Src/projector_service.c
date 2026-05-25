@@ -55,3 +55,12 @@ ProjectorResult_t Projector_Service_Control(uint8_t action)
 
     return PROJECTOR_RESULT_OK;
 }
+ProjectorResult_t Projector_Service_ExecuteCommand(const ProjectorCommand_t *cmd)
+{
+    if (cmd == NULL)
+    {
+        return PROJECTOR_RESULT_INVALID_PARAM;
+    }
+
+    return Projector_Service_Control(cmd->action);
+}

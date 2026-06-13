@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="com.sps.router">
+    <!-- Protocol Router Service Interface (UART ↔ MCU) -->
+    
+    <!-- Methods -->
+    <method name="SendCommand">
+      <arg type="y" direction="in" name="cmdId"/>
+      <arg type="ay" direction="in" name="payload"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Send command to MCU via UART -->
+    </method>
+    
+    <method name="GetDeviceStatus">
+      <arg type="y" direction="in" name="deviceId"/>
+      <arg type="y" direction="out" name="status"/>
+      <!-- Query device status from MCU -->
+    </method>
+    
+    <method name="GetConnectionStatus">
+      <arg type="s" direction="out" name="status"/>
+      <!-- Returns: "CONNECTED", "DISCONNECTED", "ERROR" -->
+    </method>
+    
+    <method name="ResetConnection">
+      <arg type="b" direction="out" name="success"/>
+      <!-- Reset UART connection -->
+    </method>
+    
+    <method name="StartOTA">
+      <arg type="u" direction="in" name="firmwareSize"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Initiate OTA firmware update -->
+    </method>
+    
+    <method name="SendOTAChunk">
+      <arg type="y" direction="in" name="chunkNumber"/>
+      <arg type="ay" direction="in" name="chunkData"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Send firmware chunk (max 128 bytes) -->
+    </method>
+    
+    <method name="EndOTA">
+      <arg type="b" direction="out" name="success"/>
+      <!-- Finalize OTA update -->
+    </method>
+
+    <!-- Signals -->
+    <signal name="ConnectionStatusChanged">
+      <arg type="s" name="status"/>
+      <!-- Emitted when connection status changes -->
+    </signal>
+    
+    <signal name="CommandAcknowledged">
+      <arg type="y" name="cmdId"/>
+      <!-- Emitted when MCU acknowledges command -->
+    </signal>
+    
+    <signal name="CommandError">
+      <arg type="y" name="cmdId"/>
+      <arg type="y" name="errorCode"/>
+      <!-- Emitted when command fails (0x01: CRC error, 0x02: Invalid param) -->
+    </signal>
+    
+    <signal name="DeviceStatusChanged">
+      <arg type="y" name="deviceId"/>
+      <arg type="y" name="newStatus"/>
+      <!-- Emitted when device status changes -->
+    </signal>
+    
+    <signal name="PresenceDetected">
+      <arg type="b" name="isPresent"/>
+      <!-- Emitted from MCU presence sensor (0x41) -->
+    </signal>
+    
+    <signal name="OTAProgress">
+      <arg type="i" name="percentage"/>
+      <!-- Emitted during OTA update -->
+    </signal>
+  </interface>
+</node>

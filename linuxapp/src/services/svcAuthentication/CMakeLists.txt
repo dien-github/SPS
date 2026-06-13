@@ -22,6 +22,8 @@ set(HEADERS
 
 add_executable(${TARGET_NAME} ${SOURCES} ${HEADERS})
 
+target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 target_link_libraries(${TARGET_NAME} PRIVATE
 	SpsCommon
 	Qt6::Core

@@ -224,6 +224,25 @@ QStringList ScenarioEngine::GetAvailableScenarios() const {
     return getAvailableScenarios();
 }
 
+// D-Bus Method: GetEngineStatus
+QString ScenarioEngine::GetEngineStatus() const {
+    return getStatus();
+}
+
+// D-Bus Method: GetScenarioInfo
+QString ScenarioEngine::GetScenarioInfo(const QString& scenarioId, QString& description, int& commandCount) const {
+    if (!m_scenarios.contains(scenarioId)) {
+        description.clear();
+        commandCount = 0;
+        return QString();
+    }
+
+    const Scenario& scenario = m_scenarios[scenarioId];
+    description = scenario.description;
+    commandCount = scenario.commands.size();
+    return scenario.name;
+}
+
 // D-Bus Method: ExecuteScenario
 bool ScenarioEngine::ExecuteScenario(const QString& scenarioId) {
     logInfo(QString("Execute scenario request: %1").arg(scenarioId));
@@ -390,19 +409,74 @@ bool ScenarioEngine::executeCommand(const ScenarioCommand& cmd) {
 }
 
 // Send control command via ProtocolRouter
-bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType, 
+bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
                                         const QString& deviceId, SPS::Device::State state) {
     if (!m_routerInterface) {
         logError("ProtocolRouter not connected");
         return false;
     }
 
-    // TODO: Implement device control via ProtocolRouter D-Bus interface
+    // Map device type to UART command ID
+    SPS::UART::CmdId cmdId;
+    switch (deviceType) {
+        case SPS::Device::Type::LIGHT:     cmdId = SPS::UART::CmdId::LIGHT_CONTROL; break;
+        case SPS::Device::Type::CURTAIN:
+        case SPS::Device::Type::SCREEN:    cmdId = SPS::UART::CmdId::CURTAIN_CONTROL; break;
+        case SPS::Device::Type::PROJECTOR: cmdId = SPS::UART::CmdId::PROJECTOR_CONTROL; break;
+        case SPS::Device::Type::AC:        cmdId = SPS::UART::CmdId::AC_CONTROL; break;
+        case SPS::Device::Type::RELAY:     cmdId = SPS::UART::CmdId::LIGHT_CONTROL; break;
+        default:
+            logError(QString("Unknown device type: %1").arg(static_cast<int>(deviceType)));
+            return false;
+    }
 
-    logDebug(QString("Control command: device=%1, state=%2")
-        .arg(deviceId).arg(static_cast<int>(state)));
+    // Build payload
+    QByteArray payload;
 
-    return true;
+    // Devices needing a sub-ID byte before state
+    if (deviceType != SPS::Device::Type::PROJECTOR) {
+        bool ok = false;
+        uchar id = deviceId.toUShort(&ok);
+        payload.append(static_cast<char>(ok ? id : 0x01));
+    }
+
+    // Map state to control byte
+    uchar stateByte;
+    switch (state) {
+        case SPS::Device::State::ON:
+        case SPS::Device::State::OPEN:
+        case SPS::Device::State::OPENING:
+            stateByte = 0x01;
+            break;
+        case SPS::Device::State::OFF:
+        case SPS::Device::State::CLOSED:
+        case SPS::Device::State::CLOSING:
+            stateByte = 0x00;
+            break;
+        default:
+            logWarning(QString("Unhandled state %1, defaulting to OFF").arg(static_cast<int>(state)));
+            stateByte = 0x00;
+            break;
+    }
+    payload.append(static_cast<char>(stateByte));
+
+    logDebug(QString("Sending command: type=%1, device=%2, state=%3, cmd=0x%4")
+        .arg(static_cast<int>(deviceType))
+        .arg(deviceId)
+        .arg(static_cast<int>(state))
+        .arg(static_cast<int>(cmdId), 2, 16, QChar('0')));
+
+    // Call ProtocolRouter::SendCommand via D-Bus
+    QDBusReply<bool> reply = m_routerInterface->call(
+        "SendCommand", static_cast<uchar>(cmdId), payload);
+
+    if (!reply.isValid()) {
+        logError(QString("SendCommand D-Bus call failed: %1")
+            .arg(reply.error().message()));
+        return false;
+    }
+
+    return reply.value();
 }
 
 // Connect to ProtocolRouter via D-Bus

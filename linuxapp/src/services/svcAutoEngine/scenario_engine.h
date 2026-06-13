@@ -52,6 +52,8 @@ public slots:
     Q_SCRIPTABLE bool StopScenario(const QString& scenarioId);
     Q_SCRIPTABLE bool ControlDevice(uchar deviceId, const QString& action);
     Q_SCRIPTABLE bool RegisterContextTrigger(const QString& context, const QString& scenarioId);
+    Q_SCRIPTABLE QString GetEngineStatus() const;
+    Q_SCRIPTABLE QString GetScenarioInfo(const QString& scenarioId, QString& description, int& commandCount) const;
 
     // Signal handlers
     void onContextEvent(const QString& context);

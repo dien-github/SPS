@@ -23,6 +23,36 @@ namespace SPS::DBus {
     const QString IFACE_ROUTER = "com.sps.router";
     const QString IFACE_ENGINE = "com.sps.engine";
     const QString IFACE_NETMGR = "com.sps.netmgr";
+    const QString IFACE_OTAMGR = "com.sps.otamanager";
+}
+
+// OTA Manager Constants
+namespace SPS::OTA {
+    const QString SERVICE_OTAMGR = "com.sps.otamanager";
+    const QString PATH_OTAMGR = "/com/sps/otamanager";
+    const QString IFACE_OTAMGR = "com.sps.otamanager";
+
+    // Update stages
+    const QString STAGE_IDLE = "IDLE";
+    const QString STAGE_DOWNLOADING_MCU = "DOWNLOADING_MCU";
+    const QString STAGE_FLASHING_MCU = "FLASHING_MCU";
+    const QString STAGE_DOWNLOADING_APPS = "DOWNLOADING_APPS";
+    const QString STAGE_UPDATING_APPS = "UPDATING_APPS";
+    const QString STAGE_VERIFYING = "VERIFYING";
+    const QString STAGE_COMPLETED = "COMPLETED";
+    const QString STAGE_FAILED = "FAILED";
+
+    // Default paths
+    const QString DOWNLOAD_DIR = "/opt/sps/updates";
+    const QString VERSION_FILE = "/opt/sps/config/version.json";
+    const QString SERVICE_INSTALL_DIR = "/opt/sps/bin";
+
+    // Timeouts
+    const int UPDATE_TIMEOUT_MS = 300000;
+    const int VERSION_CHECK_INTERVAL_MS = 3600000;
+
+    // MCU OTA params
+    const int MCU_CHUNK_SIZE = 128;
 }
 
 // UART Protocol Constants

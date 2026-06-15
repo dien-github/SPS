@@ -2,3 +2,9 @@
 PROJECT_CONTEXT.md
 .venv/
 docs/
+.vscode
+**/build
+**/.tutorial
+**.save
+**/.qt
+**/output

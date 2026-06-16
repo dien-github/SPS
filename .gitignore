@@ -1,10 +1,26 @@
 .agents/
 PROJECT_CONTEXT.md
 .venv/
+venv/
 docs/
-.vscode
-**/build
-**/.tutorial
+.vscode/
+**/build/
+**/.tutorial/
 **.save
-**/.qt
-**/output
+**/.qt/
+**/output/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node
+node_modules/
+
+# Environment
+.env
+*.env
+
+# Large files
+*.img.xz

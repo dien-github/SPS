@@ -28,20 +28,20 @@ int main(int argc, char *argv[]) {
     }
 
     // Register service object
-    if (!dbus.registerObject("/com/sps/network", &netMgr,
+    if (!dbus.registerObject("/com/sps/netmgr", &netMgr,
           	             QDBusConnection::ExportScriptableSlots |
                              QDBusConnection::ExportScriptableSignals)) {
         Logger::instance().error("svcNetworkManager", "Failed to register D-Bus object");
         return 1;
     }
 
-    if (!dbus.registerService("com.sps.network")) {
+    if (!netMgr.isRegistered() && !dbus.registerService("com.sps.netmgr")) {
         Logger::instance().error("svcNetworkManager", "Failed to register D-Bus service");
         return 1;
     }
 
     Logger::instance().info("svcNetworkManager", 
-        "Service registered on D-Bus: com.sps.network at /com/sps/network");
+        "Service registered on D-Bus: com.sps.netmgr at /com/sps/netmgr");
 
     // Handle signals for graceful shutdown
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &netMgr, [&netMgr]() {

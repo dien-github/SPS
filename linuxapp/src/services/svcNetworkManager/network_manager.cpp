@@ -7,9 +7,10 @@
 #include <QDateTime>
 #include <QNetworkInterface>
 #include <QProcess>
+#include <QRegularExpression>
 
 NetworkManager::NetworkManager(QObject* parent)
-    : SpsServiceBase("com.sps.network", "/com/sps/network", parent),
+    : SpsServiceBase("com.sps.netmgr", "/com/sps/netmgr", parent),
       m_mqttPort(1883),
       m_deviceId("sps-pi-001"),
       m_configPath("/opt/sps/config/config.json"),
@@ -331,6 +332,22 @@ bool NetworkManager::PublishDeviceStatus(const QString& roomId, const QString& d
     return publishEvent(roomId, "status", eventData);
 }
 
+// D-Bus Method: PublishEvent(topic, payload, qos)
+bool NetworkManager::PublishEvent(const QString& topic, const QByteArray& payload, int qos) {
+    if (!m_mqttClient || !m_mqttConnected) {
+        logWarning("MQTT not connected, cannot publish");
+        return false;
+    }
+
+    const bool result = m_mqttClient->publish(topic, payload, qos, false);
+    if (result) {
+        m_messagesPublished++;
+        logDebug(QString("Published raw event to %1").arg(topic));
+    }
+
+    return result;
+}
+
 // D-Bus Method: PublishEvent
 bool NetworkManager::PublishEvent(const QString& roomId, const QString& eventType, const QString& eventJson) {
     QJsonDocument doc = QJsonDocument::fromJson(eventJson.toLatin1());
@@ -345,6 +362,108 @@ bool NetworkManager::PublishEvent(const QString& roomId, const QString& eventTyp
 // D-Bus Method: SendWoL
 bool NetworkManager::SendWoL(const QString& macAddress) {
     return broadcastWoL(macAddress);
+}
+
+// D-Bus Method: SendWakeOnLAN
+bool NetworkManager::SendWakeOnLAN(const QString& macAddress, const QString& broadcastAddr) {
+    return broadcastWoL(macAddress, broadcastAddr);
+}
+
+// D-Bus Method: SyncLecturerList
+bool NetworkManager::SyncLecturerList() {
+    if (!m_mqttClient || !m_mqttConnected) {
+        logWarning("MQTT not connected, cannot request lecturer sync");
+        return false;
+    }
+
+    QJsonObject payload;
+    payload["device_id"] = m_deviceId;
+    payload["room_id"] = m_roomId;
+    payload["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    payload["action"] = "sync_lecturer_list";
+
+    const QString topic = QString("sps/%1/cmd/sync").arg(m_roomId);
+    const bool result = m_mqttClient->publish(topic, QJsonDocument(payload).toJson(QJsonDocument::Compact), 1, false);
+    if (result) {
+        m_messagesPublished++;
+        logInfo("Lecturer list sync requested");
+    }
+
+    return result;
+}
+
+// D-Bus Method: GetConnectionDetails
+QString NetworkManager::GetConnectionDetails(QString& gateway, QString& dns) const {
+    QString ipAddress;
+
+    const auto interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface& interface : interfaces) {
+        if (!(interface.flags() & QNetworkInterface::IsUp) ||
+            !(interface.flags() & QNetworkInterface::IsRunning) ||
+            (interface.flags() & QNetworkInterface::IsLoopBack)) {
+            continue;
+        }
+
+        const auto addresses = interface.addressEntries();
+        for (const QNetworkAddressEntry& address : addresses) {
+            if (address.ip().protocol() == QAbstractSocket::IPv4Protocol) {
+                ipAddress = address.ip().toString();
+                break;
+            }
+        }
+
+        if (!ipAddress.isEmpty()) {
+            break;
+        }
+    }
+
+    QProcess ipRoute;
+    ipRoute.start("ip", QStringList() << "route" << "show" << "default");
+    if (ipRoute.waitForFinished(1000) && ipRoute.exitCode() == 0) {
+        const QString output = QString::fromLocal8Bit(ipRoute.readAllStandardOutput());
+        const QRegularExpression re("\\bvia\\s+(\\S+)");
+        const QRegularExpressionMatch match = re.match(output);
+        if (match.hasMatch()) {
+            gateway = match.captured(1);
+        }
+    }
+
+    QFile resolvConf("/etc/resolv.conf");
+    if (resolvConf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!resolvConf.atEnd()) {
+            const QString line = QString::fromUtf8(resolvConf.readLine()).trimmed();
+            if (line.startsWith("nameserver ")) {
+                dns = line.section(QRegularExpression("\\s+"), 1, 1);
+                break;
+            }
+        }
+    }
+
+    return ipAddress;
+}
+
+// D-Bus Method: RequestOTAUpdate
+bool NetworkManager::RequestOTAUpdate(const QString& firmwareVersion) {
+    if (!m_mqttClient || !m_mqttConnected) {
+        logWarning("MQTT not connected, cannot request OTA update");
+        return false;
+    }
+
+    QJsonObject payload;
+    payload["device_id"] = m_deviceId;
+    payload["room_id"] = m_roomId;
+    payload["current_version"] = firmwareVersion;
+    payload["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    payload["action"] = "request_ota_update";
+
+    const QString topic = QString("sps/%1/cmd/ota").arg(m_roomId);
+    const bool result = m_mqttClient->publish(topic, QJsonDocument(payload).toJson(QJsonDocument::Compact), 1, false);
+    if (result) {
+        m_messagesPublished++;
+        logInfo(QString("OTA update requested for version %1").arg(firmwareVersion));
+    }
+
+    return result;
 }
 
 // D-Bus Method: GetRoomId

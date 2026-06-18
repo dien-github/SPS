@@ -16,7 +16,7 @@
 // Manages network connectivity and WoL (Wake-on-LAN) broadcasting
 class NetworkManager : public SpsServiceBase {
     Q_OBJECT
-    Q_CLASSINFO("D-Bus Interface", "com.sps.network")
+    Q_CLASSINFO("D-Bus Interface", "com.sps.netmgr")
 
 public:
     explicit NetworkManager(QObject* parent = nullptr);
@@ -60,13 +60,20 @@ public slots:
     // D-Bus methods
     Q_SCRIPTABLE QString GetMqttStatus() const;
     Q_SCRIPTABLE QString GetNetworkStatus() const;
+    Q_SCRIPTABLE bool PublishEvent(const QString& topic, const QByteArray& payload, int qos);
+    Q_SCRIPTABLE QString GetRoomId() const;
+    Q_SCRIPTABLE bool SetRoomId(const QString& roomId);
+    Q_SCRIPTABLE bool SendWakeOnLAN(const QString& macAddress, const QString& broadcastAddr);
+    Q_SCRIPTABLE bool SyncLecturerList();
+    Q_SCRIPTABLE QString GetConnectionDetails(QString& gateway, QString& dns) const;
+    Q_SCRIPTABLE bool RequestOTAUpdate(const QString& firmwareVersion);
+
+    // Compatibility methods used by the current HMI client but not declared in com.sps.netmgr.xml.
     Q_SCRIPTABLE bool ConnectToMqtt(const QString& broker, int port);
     Q_SCRIPTABLE bool DisconnectFromMqtt();
     Q_SCRIPTABLE bool PublishDeviceStatus(const QString& roomId, const QString& deviceId, const QString& status);
     Q_SCRIPTABLE bool PublishEvent(const QString& roomId, const QString& eventType, const QString& eventJson);
     Q_SCRIPTABLE bool SendWoL(const QString& macAddress);
-    Q_SCRIPTABLE QString GetRoomId() const;
-    Q_SCRIPTABLE bool SetRoomId(const QString& roomId);
 
     // Signal handlers from MQTT
     void onMqttConnected();

@@ -44,7 +44,7 @@ bool AppDbusCli::initialize() {
     allConnected &= connectToService(m_authInterface, "com.sps.auth", "/com/sps/auth");
     allConnected &= connectToService(m_routerInterface, "com.sps.router", "/com/sps/router");
     allConnected &= connectToService(m_engineInterface, "com.sps.engine", "/com/sps/engine");
-    allConnected &= connectToService(m_netMgrInterface, "com.sps.network", "/com/sps/network");
+    allConnected &= connectToService(m_netMgrInterface, "com.sps.netmgr", "/com/sps/netmgr");
 
     if (!allConnected) {
         logWarning("AppDbusCli", "Some services not available - application may operate in degraded mode");
@@ -64,7 +64,7 @@ bool AppDbusCli::discoverServices() {
     logInfo("AppDbusCli", "Discovering SPS services...");
 
     QStringList expectedServices;
-    expectedServices << "com.sps.auth" << "com.sps.router" << "com.sps.engine" << "com.sps.network";
+    expectedServices << "com.sps.auth" << "com.sps.router" << "com.sps.engine" << "com.sps.netmgr";
 
     QDBusConnection dbus = QDBusConnection::systemBus();
     for (const QString& service : expectedServices) {
@@ -192,7 +192,7 @@ bool AppDbusCli::disconnectFromMqtt() {
 
 bool AppDbusCli::sendWoL(const QString& macAddress) {
     logInfo("AppDbusCli", QString("Sending WoL to %1").arg(macAddress));
-    QVariant result = callMethod(m_netMgrInterface, "SendWoL", macAddress);
+    QVariant result = callMethod(m_netMgrInterface, "SendWakeOnLAN", macAddress, "255.255.255.255");
     return result.toBool();
 }
 

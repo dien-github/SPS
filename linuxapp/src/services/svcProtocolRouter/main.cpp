@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!dbus.registerService("com.sps.router")) {
+    if (!router.isRegistered() && !dbus.registerService("com.sps.router")) {
         Logger::instance().error("svcProtocolRouter", "Failed to register D-Bus service");
         return 1;
     }

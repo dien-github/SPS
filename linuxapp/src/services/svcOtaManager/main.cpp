@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!dbus.registerService("com.sps.otamanager")) {
+    if (!otaMgr.isRegistered() && !dbus.registerService("com.sps.otamanager")) {
         Logger::instance().error("svcOtaManager", "Failed to register D-Bus service");
         return 1;
     }

@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!dbus.registerService("com.sps.auth")) {
+    if (!service.isRegistered() && !dbus.registerService("com.sps.auth")) {
         Logger::instance().error("svcAuthentication", "Failed to register D-Bus service");
         return 1;
     }

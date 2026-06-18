@@ -72,7 +72,7 @@ DBUS_SERVICES: Dict[str, Tuple[str, str]] = {
     "auth":   ("com.sps.auth",   "/com/sps/auth"),
     "router": ("com.sps.router", "/com/sps/router"),
     "engine": ("com.sps.engine", "/com/sps/engine"),
-    "netmgr": ("com.sps.netmgr", "/com/sps/network"),
+    "netmgr": ("com.sps.netmgr", "/com/sps/netmgr"),
     "ota":    ("com.sps.otamanager", "/com/sps/otamanager"),
 }
 

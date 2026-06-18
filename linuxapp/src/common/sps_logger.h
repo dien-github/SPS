@@ -7,6 +7,9 @@
 #include <QTextStream>
 #include <QMutex>
 #include <QDebug>
+#include <QDir>
+#include <QFileInfo>
+#include "sps_runtime_config.h"
 
 // Logging severity levels
 enum class LogLevel {
@@ -29,11 +32,20 @@ public:
     void init(const QString& logFilePath = "/var/log/sps/sps.log", 
               LogLevel level = LogLevel::INFO) {
         QMutexLocker lock(&m_mutex);
-        m_logFile.setFileName(logFilePath);
+        QString resolvedPath = SPS::Runtime::logFilePath(logFilePath);
+        QDir().mkpath(QFileInfo(resolvedPath).absolutePath());
+
+        m_logFile.setFileName(resolvedPath);
         m_minLevel = level;
 
         if (!m_logFile.open(QIODevice::Append | QIODevice::Text)) {
-            qWarning() << "Failed to open log file:" << logFilePath;
+            qWarning() << "Failed to open log file:" << resolvedPath;
+            resolvedPath = SPS::Runtime::fallbackLogFilePath(logFilePath);
+            m_logFile.setFileName(resolvedPath);
+
+            if (!m_logFile.open(QIODevice::Append | QIODevice::Text)) {
+                qWarning() << "Failed to open fallback log file:" << resolvedPath;
+            }
         }
     }
 

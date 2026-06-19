@@ -7,6 +7,7 @@
 uint16_t UartFrame::crcTable[256] = {0};
 bool UartFrame::crcTableInitialized = false;
 
+/** Constructor. Initializes frame fields to defaults and ensures the CRC table is ready. */
 UartFrame::UartFrame()
     : m_length(0), m_cmdId(UART::CommandId::INVALID), m_crc16(0), m_isValid(false) {
     m_header[0] = UART::HEADER_BYTE_0;
@@ -14,7 +15,7 @@ UartFrame::UartFrame()
     initCrcTable();
 }
 
-// Initialize CRC-16/CCITT lookup table
+/** Initializes the CRC-16/CCITT lookup table for fast computation (called once). */
 void UartFrame::initCrcTable() {
     if (crcTableInitialized) {
         return;
@@ -40,11 +41,12 @@ void UartFrame::initCrcTable() {
     crcTableInitialized = true;
 }
 
-// Calculate CRC-16/CCITT for data
+/** Calculates CRC-16/CCITT over the given data using the lookup table. */
 uint16_t UartFrame::calculateCrc16(const QByteArray& data) {
     return crc16(data);
 }
 
+/** Computes CRC-16/CCITT over data with an optional initial value using the lookup table. */
 uint16_t UartFrame::crc16(const QByteArray& data, uint16_t initialValue) {
     uint16_t crc = initialValue;
 
@@ -56,7 +58,7 @@ uint16_t UartFrame::crc16(const QByteArray& data, uint16_t initialValue) {
     return crc;
 }
 
-// Build frame for transmission
+/** Builds a complete UART frame (header, length, cmdId, payload, CRC) for transmission. */
 QByteArray UartFrame::buildFrame(UART::CommandId cmdId, const QByteArray& payload) {
     QByteArray frame;
     uint8_t length = payload.size();
@@ -92,7 +94,7 @@ QByteArray UartFrame::buildFrame(UART::CommandId cmdId, const QByteArray& payloa
     return frame;
 }
 
-// Parse frame from incoming data
+/** Parses raw byte data into frame fields, validating header, length, and CRC. */
 bool UartFrame::parseFrame(const QByteArray& data) {
     m_isValid = false;
     m_errorMessage.clear();
@@ -169,7 +171,7 @@ bool UartFrame::parseFrame(const QByteArray& data) {
     return true;
 }
 
-// Check if data has valid header
+/** Checks if data starts with a valid UART frame header (0xAA 0x55). */
 bool UartFrame::isValidHeader(const QByteArray& data) {
     if (data.size() < UART::HEADER_SIZE) {
         return false;
@@ -178,7 +180,7 @@ bool UartFrame::isValidHeader(const QByteArray& data) {
            static_cast<uint8_t>(data[1]) == UART::HEADER_BYTE_1;
 }
 
-// Find first frame start in buffer
+/** Finds the first occurrence of a valid frame header in the data buffer. Returns the index or -1. */
 int UartFrame::findFrameStart(const QByteArray& data) {
     for (int i = 0; i < data.size() - 1; ++i) {
         if (static_cast<uint8_t>(data[i]) == UART::HEADER_BYTE_0 &&
@@ -189,7 +191,7 @@ int UartFrame::findFrameStart(const QByteArray& data) {
     return -1;
 }
 
-// Convert frame to string for debugging
+/** Converts the frame to a human-readable debug string including all fields. */
 QString UartFrame::toString() const {
     QString str;
     str += QString("Frame: Header=0x%1%2 Len=%3 CmdId=0x%4 Payload=%5 CRC=0x%6")
@@ -206,7 +208,7 @@ QString UartFrame::toString() const {
     return str;
 }
 
-// Convert frame to byte array for transmission
+/** Converts the frame back to a raw byte array suitable for transmission. */
 QByteArray UartFrame::toByteArray() const {
     return buildFrame(m_cmdId, m_payload);
 }

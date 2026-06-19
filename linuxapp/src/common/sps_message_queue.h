@@ -6,13 +6,14 @@
 #include <QWaitCondition>
 #include <memory>
 
-// Thread-safe message queue for inter-process communication
+/** Thread-safe message queue (producer-consumer) for inter-process communication. */
 template<typename T>
 class MessageQueue {
 public:
+    /** Constructor: create a queue with the given maximum size. */
     MessageQueue(int maxSize = 1000) : m_maxSize(maxSize) {}
 
-    // Add message to queue (thread-safe)
+    /** Add a message to the queue (thread-safe). Returns false if the queue is full. */
     bool enqueue(const T& message) {
         QMutexLocker lock(&m_mutex);
 
@@ -25,7 +26,7 @@ public:
         return true;
     }
 
-    // Retrieve message from queue (blocks if empty, returns false on timeout)
+    /** Retrieve a message from the queue (blocks if empty, returns false on timeout). */
     bool dequeue(T& message, unsigned long timeoutMs = ULONG_MAX) {
         QMutexLocker lock(&m_mutex);
 
@@ -43,7 +44,7 @@ public:
         return true;
     }
 
-    // Non-blocking dequeue
+    /** Non-blocking dequeue: returns false immediately if the queue is empty. */
     bool tryDequeue(T& message) {
         QMutexLocker lock(&m_mutex);
         if (m_queue.isEmpty()) {
@@ -53,25 +54,25 @@ public:
         return true;
     }
 
-    // Get queue size
+    /** Returns the current number of items in the queue. */
     int size() const {
         QMutexLocker lock(&m_mutex);
         return m_queue.size();
     }
 
-    // Clear queue
+    /** Remove all items from the queue. */
     void clear() {
         QMutexLocker lock(&m_mutex);
         m_queue.clear();
     }
 
-    // Check if empty
+    /** Returns true if the queue contains no items. */
     bool isEmpty() const {
         QMutexLocker lock(&m_mutex);
         return m_queue.isEmpty();
     }
 
-    // Check if full
+    /** Returns true if the queue has reached its maximum capacity. */
     bool isFull() const {
         QMutexLocker lock(&m_mutex);
         return m_queue.size() >= m_maxSize;

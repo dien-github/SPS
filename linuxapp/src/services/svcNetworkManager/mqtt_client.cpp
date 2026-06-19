@@ -1,6 +1,7 @@
 #include "mqtt_client.h"
 #include <QDebug>
 
+/** Initializes the MQTT client in DISCONNECTED state with default values. */
 MqttClient::MqttClient(QObject* parent)
     : QObject(parent), m_state(MQTT::ConnectionState::DISCONNECTED),
       m_brokerPort(MQTT::DEFAULT_BROKER_PORT),
@@ -10,13 +11,14 @@ MqttClient::MqttClient(QObject* parent)
       m_mqttClient(nullptr) {
 }
 
+/** Disconnects from the broker if currently connected. */
 MqttClient::~MqttClient() {
     if (isConnected()) {
         disconnect();
     }
 }
 
-// Connect to MQTT broker
+/** Stores connection parameters, sets state to CONNECTING, then simulates a successful connection. */
 bool MqttClient::connect(const QString& brokerHost, int brokerPort,
                          const QString& clientId, const QString& username,
                          const QString& password) {
@@ -47,7 +49,7 @@ bool MqttClient::connect(const QString& brokerHost, int brokerPort,
     return true;
 }
 
-// Disconnect from broker
+/** Sets state to DISCONNECTING, clears subscriptions, and emits disconnected signal. */
 bool MqttClient::disconnect() {
     if (m_state == MQTT::ConnectionState::DISCONNECTED) {
         return true;
@@ -67,12 +69,12 @@ bool MqttClient::disconnect() {
     return true;
 }
 
-// Check if connected
+/** Returns true if the connection state is CONNECTED. */
 bool MqttClient::isConnected() const {
     return m_state == MQTT::ConnectionState::CONNECTED;
 }
 
-// Subscribe to topic
+/** Adds the topic to the local subscription map and emits a confirmation. */
 bool MqttClient::subscribe(const QString& topic, int qos) {
     if (!isConnected()) {
         m_lastError = "Not connected to broker";
@@ -89,7 +91,7 @@ bool MqttClient::subscribe(const QString& topic, int qos) {
     return true;
 }
 
-// Unsubscribe from topic
+/** Removes the topic from the subscription map and emits a confirmation. */
 bool MqttClient::unsubscribe(const QString& topic) {
     if (m_subscriptions.remove(topic) > 0) {
         emit subscriptionChanged(topic, false);
@@ -100,7 +102,7 @@ bool MqttClient::unsubscribe(const QString& topic) {
     return false;
 }
 
-// Publish message
+/** Publishes a payload to a topic if connected; currently a simulated no-op. */
 bool MqttClient::publish(const QString& topic, const QByteArray& payload,
                         int qos, bool retain) {
     if (!isConnected()) {
@@ -119,13 +121,13 @@ bool MqttClient::publish(const QString& topic, const QByteArray& payload,
     return true;
 }
 
-// Publish device status
+/** Publishes a status payload using the device status topic template. */
 bool MqttClient::publishStatus(const QString& roomId, const QByteArray& payload) {
     QString topic = expandTopic(MQTT::TOPIC_STATUS_DEVICES, roomId);
     return publish(topic, payload, MQTT::QOS_FIRE_AND_FORGET, true);
 }
 
-// Publish event
+/** Publishes an event payload using the appropriate event topic template. */
 bool MqttClient::publishEvent(const QString& roomId, const QString& eventType, 
                               const QByteArray& payload) {
     QString topic;
@@ -141,18 +143,18 @@ bool MqttClient::publishEvent(const QString& roomId, const QString& eventType,
     return publish(topic, payload, MQTT::QOS_AT_LEAST_ONCE);
 }
 
-// Set keep alive interval
+/** Sets the keep-alive interval in seconds for the MQTT connection. */
 void MqttClient::setKeepAliveInterval(int seconds) {
     m_keepAliveInterval = seconds;
 }
 
-// Set auto-reconnect
+/** Enables or disables auto-reconnect and sets the retry interval. */
 void MqttClient::setAutoReconnect(bool autoReconnect, int retryIntervalMs) {
     m_autoReconnect = autoReconnect;
     m_retryIntervalMs = retryIntervalMs;
 }
 
-// Set Last Will and Testament
+/** Stores the Last Will and Testament topic, message, and QoS for the next connection. */
 void MqttClient::setLastWillAndTestament(const QString& topic, 
                                          const QByteArray& message, int qos) {
     QMutexLocker lock(&m_mutex);
@@ -165,23 +167,23 @@ void MqttClient::setLastWillAndTestament(const QString& topic,
         .arg(topic).arg(qos));
 }
 
-// Get connection state
+/** Returns the current connection state enum value. */
 MQTT::ConnectionState MqttClient::getConnectionState() const {
     return m_state;
 }
 
-// Get last error
+/** Returns the last error message string. */
 QString MqttClient::getLastError() const {
     return m_lastError;
 }
 
-// Get subscription count
+/** Returns the number of topics currently subscribed to. */
 int MqttClient::getSubscriptionCount() const {
     QMutexLocker lock(&m_mutex);
     return m_subscriptions.size();
 }
 
-// Dump subscriptions for debugging
+/** Emits all current subscriptions via the debugMessage signal. */
 void MqttClient::dumpSubscriptions() const {
     QMutexLocker lock(&m_mutex);
 
@@ -194,7 +196,7 @@ void MqttClient::dumpSubscriptions() const {
     emit debugMessage("========================");
 }
 
-// Get string representation
+/** Returns a formatted string with broker address, state, and subscription count. */
 QString MqttClient::toString() const {
     QString state;
 
@@ -213,6 +215,7 @@ QString MqttClient::toString() const {
 
 // Private helper methods
 
+/** Parses "sps/{RoomID}/cmd/{commandType}" topic format into its components. */
 bool MqttClient::parseCommandTopic(const QString& topic, QString& roomId, QString& commandType) {
     // Parse: sps/{RoomID}/cmd/{commandType}
     QStringList parts = topic.split('/');
@@ -226,6 +229,7 @@ bool MqttClient::parseCommandTopic(const QString& topic, QString& roomId, QStrin
     return true;
 }
 
+/** Parses "sps/{RoomID}/event/{eventType}" topic format into its components. */
 bool MqttClient::parseEventTopic(const QString& topic, QString& roomId, QString& eventType) {
     // Parse: sps/{RoomID}/event/{eventType}
     QStringList parts = topic.split('/');
@@ -239,6 +243,7 @@ bool MqttClient::parseEventTopic(const QString& topic, QString& roomId, QString&
     return true;
 }
 
+/** Parses a "sps/{RoomID}/status/..." topic and extracts the room ID. */
 bool MqttClient::parseStatusTopic(const QString& topic, QString& roomId) {
     // Parse: sps/{RoomID}/status/...
     QStringList parts = topic.split('/');
@@ -251,30 +256,27 @@ bool MqttClient::parseStatusTopic(const QString& topic, QString& roomId) {
     return true;
 }
 
+/** Replaces the "{RoomID}" placeholder in a topic template with the actual room ID. */
 QString MqttClient::expandTopic(const QString& topicTemplate, const QString& roomId) {
-    /*
-	Problem:
-	- `replace` is an non-const function, which will replace the passing argument
-	- `topicTemplate` is a const, and must not be changed
-	=> discards qualifiers
-	Solution: create a copy of the `topicTemplate` - this is `result` variable. And the changes will be implement on this variable.
-    */
     QString result = topicTemplate;
     return result.replace("{RoomID}", roomId);
 }
 
 // Slot callbacks
 
+/** Sets state to CONNECTED and emits the connected signal. */
 void MqttClient::onConnected() {
     m_state = MQTT::ConnectionState::CONNECTED;
     emit connected();
 }
 
+/** Sets state to DISCONNECTED and emits disconnected with a default reason. */
 void MqttClient::onDisconnected() {
     m_state = MQTT::ConnectionState::DISCONNECTED;
     emit disconnected("Disconnected by broker");
 }
 
+/** Emits messageReceived and routes to command/status signals based on topic. */
 void MqttClient::onMessageReceived(const QString& topic, const QByteArray& message) {
     emit messageReceived(topic, message);
 
@@ -288,17 +290,19 @@ void MqttClient::onMessageReceived(const QString& topic, const QByteArray& messa
     }
 }
 
+/** Stores the error, sets state to ERROR, and emits a debug message. */
 void MqttClient::onError(const QString& error) {
     m_lastError = error;
     m_state = MQTT::ConnectionState::ERROR;
     emit debugMessage(QString("MQTT Error: %1").arg(error));
-    // emit errorOccured(error);
 }
 
+/** Emits a debug message confirming the subscription. */
 void MqttClient::onSubscribed(const QString& topic) {
     emit debugMessage(QString("Subscription confirmed: %1").arg(topic));
 }
 
+/** Emits a debug message confirming the unsubscription. */
 void MqttClient::onUnsubscribed(const QString& topic) {
     emit debugMessage(QString("Unsubscription confirmed: %1").arg(topic));
 }

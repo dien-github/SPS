@@ -11,7 +11,7 @@
 #include <QFileInfo>
 #include "sps_runtime_config.h"
 
-// Logging severity levels
+/** Logging severity levels. */
 enum class LogLevel {
     DEBUG = 0,
     INFO = 1,
@@ -20,15 +20,16 @@ enum class LogLevel {
     CRITICAL = 4
 };
 
-// Unified logging system
+/** Unified logging system (singleton). */
 class Logger {
 public:
+    /** Returns the singleton Logger instance. */
     static Logger& instance() {
         static Logger logger;
         return logger;
     }
 
-    // Initialize logger with file path
+    /** Initialize the logger with a file path and minimum log level. */
     void init(const QString& logFilePath = "/var/log/sps/sps.log", 
               LogLevel level = LogLevel::INFO) {
         QMutexLocker lock(&m_mutex);
@@ -49,7 +50,7 @@ public:
         }
     }
 
-    // Log message
+    /** Log a message at the given severity level for a specific component. */
     void log(LogLevel level, const QString& component, const QString& message) {
         if (level < m_minLevel) {
             return;  // Skip logging below minimum level
@@ -76,34 +77,38 @@ public:
         }
     }
 
-    // Convenience methods
+    /** Log a debug-level message for a component. */
     void debug(const QString& component, const QString& message) {
         log(LogLevel::DEBUG, component, message);
     }
 
+    /** Log an info-level message for a component. */
     void info(const QString& component, const QString& message) {
         log(LogLevel::INFO, component, message);
     }
 
+    /** Log a warning-level message for a component. */
     void warning(const QString& component, const QString& message) {
         log(LogLevel::WARNING, component, message);
     }
 
+    /** Log an error-level message for a component. */
     void error(const QString& component, const QString& message) {
         log(LogLevel::ERROR, component, message);
     }
 
+    /** Log a critical-level message for a component. */
     void critical(const QString& component, const QString& message) {
         log(LogLevel::CRITICAL, component, message);
     }
 
-    // Set minimum log level
+    /** Set the minimum log level (messages below this are ignored). */
     void setMinLevel(LogLevel level) {
         QMutexLocker lock(&m_mutex);
         m_minLevel = level;
     }
 
-    // Close log file
+    /** Close the log file. */
     void close() {
         QMutexLocker lock(&m_mutex);
         if (m_logFile.isOpen()) {
@@ -112,12 +117,15 @@ public:
     }
 
 private:
+    /** Private constructor (singleton). */
     Logger() : m_minLevel(LogLevel::INFO) {}
 
+    /** Private destructor: closes the log file. */
     ~Logger() {
         close();
     }
 
+    /** Convert a LogLevel enum to its string representation. */
     QString levelToString(LogLevel level) const {
         switch (level) {
             case LogLevel::DEBUG:    return "DEBUG";

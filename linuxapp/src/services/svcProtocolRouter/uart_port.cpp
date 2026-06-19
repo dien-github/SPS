@@ -2,6 +2,7 @@
 #include <QDebug>
 #include <QThread>
 
+/** Constructor. Initializes state and connects serial port signals. */
 UartPort::UartPort(QObject* parent)
     : QObject(parent), m_isOpen(false), m_bytesRead(0), m_bytesWritten(0) {
 
@@ -10,11 +11,12 @@ UartPort::UartPort(QObject* parent)
     connect(&m_serialPort, &QSerialPort::readyRead, this, &UartPort::onReadyRead);
 }
 
+/** Destructor. Closes the port if open. */
 UartPort::~UartPort() {
     closePort();
 }
 
-// Open serial port with default or specified configuration
+/** Opens the serial port, applies configuration, and emits connection signals. */
 bool UartPort::openPort(const QString& portName) {
     if (m_isOpen) {
         m_lastError = "Port already open";
@@ -46,7 +48,7 @@ bool UartPort::openPort(const QString& portName) {
     return true;
 }
 
-// Close serial port
+/** Closes the serial port, clears buffers, and emits portClosed. */
 bool UartPort::closePort() {
     if (!m_isOpen) {
         return true;
@@ -63,12 +65,12 @@ bool UartPort::closePort() {
     return true;
 }
 
-// Check if port is open
+/** Returns true if the serial port is currently open. */
 bool UartPort::isOpen() const {
     return m_isOpen && m_serialPort.isOpen();
 }
 
-// Configure port settings
+/** Configures baud rate, data bits, stop bits, parity, and flow control on the open port. */
 bool UartPort::setConfiguration(int baudRate, int dataBits, int stopBits) {
     if (!m_serialPort.isOpen()) {
         m_lastError = "Port not open";
@@ -113,7 +115,7 @@ bool UartPort::setConfiguration(int baudRate, int dataBits, int stopBits) {
     return true;
 }
 
-// Send frame data
+/** Sends raw frame data over the serial port and waits for the write to complete. */
 bool UartPort::sendFrame(const QByteArray& frameData) {
     if (!m_isOpen) {
         m_lastError = "Port not open";
@@ -147,13 +149,13 @@ bool UartPort::sendFrame(const QByteArray& frameData) {
     return true;
 }
 
-// Send command with CRC
+/** Builds a UART frame with CRC and sends it over the serial port. */
 bool UartPort::sendCommand(UART::CommandId cmdId, const QByteArray& payload) {
     QByteArray frame = UartFrame::buildFrame(cmdId, payload);
     return sendFrame(frame);
 }
 
-// Read available data
+/** Reads all available data from the serial port and processes it into frames. */
 QByteArray UartPort::readAvailable() {
     if (!m_isOpen) {
         return QByteArray();
@@ -170,7 +172,7 @@ QByteArray UartPort::readAvailable() {
     return data;
 }
 
-// Wait for data to be ready
+/** Blocks until data is available on the serial port or the timeout expires. */
 bool UartPort::waitForReadyRead(int msecs) {
     if (!m_isOpen) {
         return false;
@@ -179,7 +181,7 @@ bool UartPort::waitForReadyRead(int msecs) {
     return m_serialPort.waitForReadyRead(msecs);
 }
 
-// Get next complete frame from queue
+/** Dequeues the next complete parsed frame; returns false if the queue is empty. */
 bool UartPort::getNextFrame(UartFrame& frame) {
     QMutexLocker lock(&m_mutex);
 
@@ -191,40 +193,40 @@ bool UartPort::getNextFrame(UartFrame& frame) {
     return true;
 }
 
-// Get port name
+/** Returns the serial port device name. */
 QString UartPort::getPortName() const {
     return m_serialPort.portName();
 }
 
-// Get last error message
+/** Returns the last error message. */
 QString UartPort::getLastError() const {
     return m_lastError;
 }
 
-// Get number of complete frames in queue
+/** Returns the number of complete frames awaiting processing. Thread-safe. */
 int UartPort::getFrameCount() const {
     QMutexLocker lock(&m_mutex);
     return m_frameQueue.size();
 }
 
-// Get buffer size
+/** Returns the size of the receive buffer. Thread-safe. */
 int UartPort::getBufferSize() const {
     QMutexLocker lock(&m_mutex);
     return m_receiveBuffer.size();
 }
 
-// Reset statistics
+/** Resets byte read/write counters to zero. */
 void UartPort::resetStatistics() {
     m_bytesRead = 0;
     m_bytesWritten = 0;
 }
 
-// Slot: handle serial port ready read signal
+/** Slot. Called when data is available on the serial port; reads and processes it. */
 void UartPort::onReadyRead() {
     readAvailable();
 }
 
-// Slot: handle serial port error
+/** Slot. Handles serial port errors; emits connectionStatusChanged on resource errors. */
 void UartPort::onError(QSerialPort::SerialPortError error) {
     if (error == QSerialPort::NoError) {
         return;
@@ -241,7 +243,7 @@ void UartPort::onError(QSerialPort::SerialPortError error) {
     emit errorOccurred(m_lastError);
 }
 
-// Add received data to buffer
+/** Appends received data to the buffer, trimming excess if overflow is reached. */
 void UartPort::addToBuffer(const QByteArray& data) {
     QMutexLocker lock(&m_mutex);
     m_receiveBuffer.append(data);
@@ -252,7 +254,7 @@ void UartPort::addToBuffer(const QByteArray& data) {
     }
 }
 
-// Process data in buffer to extract complete frames
+/** Scans the receive buffer for valid frames, parses them, and emits frameReceived. */
 void UartPort::processReceivedData() {
     QMutexLocker lock(&m_mutex);
 
@@ -300,7 +302,7 @@ void UartPort::processReceivedData() {
     }
 }
 
-// Get list of available serial ports
+/** Returns a list of available serial port names on the system. */
 QStringList UartPort::getAvailablePorts() {
     QStringList ports;
 

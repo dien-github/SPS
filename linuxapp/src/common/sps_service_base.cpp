@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QDBusError>
 
+/** Constructor: create a service with a D-Bus name, object path, and optional parent. */
 SpsServiceBase::SpsServiceBase(const QString& serviceName, 
                                const QString& objectPath,
                                QObject* parent)
@@ -10,13 +11,14 @@ SpsServiceBase::SpsServiceBase(const QString& serviceName,
       m_dbusConnection(QDBusConnection::systemBus()) {
 }
 
+/** Destructor: unregisters from D-Bus if still registered. */
 SpsServiceBase::~SpsServiceBase() {
     if (m_isRegistered) {
         unregisterService();
     }
 }
 
-// Register service on D-Bus
+/** Register this service name on the D-Bus system bus. */
 bool SpsServiceBase::registerService() {
     if (!m_dbusConnection.isConnected()) {
         logError("D-Bus system bus not connected");
@@ -34,7 +36,7 @@ bool SpsServiceBase::registerService() {
     return true;
 }
 
-// Register object on D-Bus
+/** Register a D-Bus adaptor object at this service's object path. */
 bool SpsServiceBase::registerObject(QDBusAbstractAdaptor* adaptor) {
     if (!m_dbusConnection.isConnected()) {
         logError("D-Bus system bus not connected");
@@ -51,7 +53,7 @@ bool SpsServiceBase::registerObject(QDBusAbstractAdaptor* adaptor) {
     return true;
 }
 
-// Unregister service from D-Bus
+/** Unregister the service and object from D-Bus. */
 bool SpsServiceBase::unregisterService() {
     if (!m_isRegistered) {
         return true;
@@ -65,14 +67,14 @@ bool SpsServiceBase::unregisterService() {
     return true;
 }
 
-// Shutdown
+/** Shut down the service and release resources. */
 void SpsServiceBase::shutdown() {
     logInfo("Service shutting down...");
     unregisterService();
     setRunning(false);
 }
 
-// Get service status
+/** Returns a human-readable status description of the service. */
 QString SpsServiceBase::getStatus() const {
     if (!m_isRunning) {
         return "STOPPED";

@@ -24,6 +24,7 @@ static const QMap<QString, QString> s_serviceMap = {
     {"appHmi",             "/opt/sps/bin/appHmi"}
 };
 
+/** Constructor. Initializes member variables, connects timers, and logs creation. */
 OtaManager::OtaManager(QObject* parent)
     : SpsServiceBase("com.sps.otamanager", "/com/sps/otamanager", parent),
       m_configPath("/opt/sps/config/config.json"),
@@ -48,11 +49,12 @@ OtaManager::OtaManager(QObject* parent)
     logInfo("OTA Manager service created");
 }
 
+/** Destructor. Calls shutdown to clean up resources. */
 OtaManager::~OtaManager() {
     shutdown();
 }
 
-// Initialize service
+/** Initializes the service: loads config, checks version, connects D-Bus, starts timers. */
 bool OtaManager::initialize() {
     logInfo("Initializing OTA Manager service...");
 
@@ -101,7 +103,7 @@ bool OtaManager::initialize() {
     return true;
 }
 
-// Shutdown service
+/** Shuts down the service: stops timers, aborts downloads, cleans temp files. */
 void OtaManager::shutdown() {
     logInfo("Shutting down OTA Manager service...");
 
@@ -127,7 +129,7 @@ void OtaManager::shutdown() {
     SpsServiceBase::shutdown();
 }
 
-// Get service status
+/** Returns a human-readable status string with current stage, progress, and update counts. */
 QString OtaManager::getStatus() const {
     return QString("OTA Status: %1 | Progress: %2% | Total: %3, OK: %4, Fail: %5")
         .arg(stageToString(m_state.stage))
@@ -137,7 +139,7 @@ QString OtaManager::getStatus() const {
         .arg(m_failedUpdates);
 }
 
-// Convert stage enum to string
+/** Converts an OtaStage enum value to a human-readable string. */
 QString OtaManager::stageToString(OtaStage stage) {
     switch (stage) {
         case OtaStage::IDLE:             return "IDLE";
@@ -152,12 +154,12 @@ QString OtaManager::stageToString(OtaStage stage) {
     return "UNKNOWN";
 }
 
-// ========== D-Bus Methods ==========
-
+/** Returns the current OTA stage as a string (D-Bus callable). */
 QString OtaManager::GetOtaStatus() const {
     return stageToString(m_state.stage);
 }
 
+/** Starts an MCU firmware update from a URL. Returns false if an update is already in progress. */
 bool OtaManager::StartMcuFirmwareUpdate(const QString& firmwareUrl, const QString& expectedChecksum) {
     if (m_state.stage != OtaStage::IDLE) {
         logWarning("Update already in progress");
@@ -179,6 +181,7 @@ bool OtaManager::StartMcuFirmwareUpdate(const QString& firmwareUrl, const QStrin
     return true;
 }
 
+/** Starts an app service binary update from a URL. Validates that the service name is known. */
 bool OtaManager::StartAppServiceUpdate(const QString& serviceName, const QString& packageUrl, const QString& expectedChecksum) {
     if (m_state.stage != OtaStage::IDLE) {
         logWarning("Update already in progress");
@@ -206,6 +209,7 @@ bool OtaManager::StartAppServiceUpdate(const QString& serviceName, const QString
     return true;
 }
 
+/** Starts a combined MCU firmware + app services update sequence. */
 bool OtaManager::StartFullUpdate(const QString& mcuFirmwareUrl, const QString& mcuChecksum,
                                   const QString& appPackageUrl, const QString& appChecksum) {
     if (m_state.stage != OtaStage::IDLE) {
@@ -230,14 +234,17 @@ bool OtaManager::StartFullUpdate(const QString& mcuFirmwareUrl, const QString& m
     return true;
 }
 
+/** Returns the current update progress as a percentage (0-100). */
 int OtaManager::GetUpdateProgress() const {
     return m_state.progress;
 }
 
+/** Returns the current system version string. */
 QString OtaManager::GetCurrentVersion() const {
     return m_state.currentVersion;
 }
 
+/** Cancels the ongoing update: aborts download, cleans up, and emits completion signal. */
 bool OtaManager::CancelUpdate() {
     if (m_state.stage == OtaStage::IDLE || m_state.stage == OtaStage::COMPLETED) {
         return false;
@@ -265,8 +272,7 @@ bool OtaManager::CancelUpdate() {
     return true;
 }
 
-// ========== D-Bus Signal Handlers ==========
-
+/** Handles an OTA command signal from NetworkManager, starting MCU update if idle. */
 void OtaManager::onOtaCommandReceived(const QString& firmwareUrl) {
     logInfo(QString("OTA command received from NetworkManager: %1").arg(firmwareUrl));
 
@@ -275,12 +281,12 @@ void OtaManager::onOtaCommandReceived(const QString& firmwareUrl) {
     }
 }
 
+/** Logs router connection status changes from ProtocolRouter. */
 void OtaManager::onRouterConnectionStatusChanged(const QString& status) {
     logDebug(QString("Router connection status: %1").arg(status));
 }
 
-// ========== Stage Management ==========
-
+/** Advances the update to the next stage (download, flash, verify, etc.). */
 void OtaManager::startNextStage() {
     if (m_state.cancelled) return;
 
@@ -353,8 +359,7 @@ void OtaManager::startNextStage() {
     }
 }
 
-// ========== Download Handling ==========
-
+/** Downloads a file from a URL to a temporary .part file, sets up progress/finished handlers. */
 bool OtaManager::downloadFile(const QString& url, const QString& destPath) {
     logInfo(QString("Downloading: %1 -> %2").arg(url, destPath));
 
@@ -392,6 +397,7 @@ bool OtaManager::downloadFile(const QString& url, const QString& destPath) {
     return true;
 }
 
+/** Updates progress percentage and emits UpdateProgress signal during download. */
 void OtaManager::onDownloadProgress(qint64 received, qint64 total) {
     if (total > 0) {
         int baseProgress = (m_state.stage == OtaStage::DOWNLOADING_MCU) ? 0 : 50;
@@ -404,6 +410,7 @@ void OtaManager::onDownloadProgress(qint64 received, qint64 total) {
     }
 }
 
+/** Handles download completion: finalizes file, verifies checksum, advances to next stage. */
 void OtaManager::onDownloadFinished() {
     if (!m_currentReply || !m_downloadFile) return;
 
@@ -468,6 +475,7 @@ void OtaManager::onDownloadFinished() {
     }
 }
 
+/** Verifies a file's SHA-256 checksum against an expected value. Returns true if empty checksum. */
 bool OtaManager::verifyChecksum(const QString& filePath, const QString& expectedChecksum) {
     if (expectedChecksum.isEmpty()) {
         logInfo("No checksum provided, skipping verification");
@@ -500,12 +508,12 @@ bool OtaManager::verifyChecksum(const QString& filePath, const QString& expected
     return true;
 }
 
+/** Returns the configured download directory path. */
 QString OtaManager::getDefaultDownloadPath() const {
     return m_downloadDir;
 }
 
-// ========== MCU Firmware Update ==========
-
+/** Flashes firmware binary to the MCU via ProtocolRouter D-Bus interface. */
 bool OtaManager::flashMcuFirmware(const QString& firmwarePath) {
     logInfo(QString("Flashing MCU firmware: %1").arg(firmwarePath));
 
@@ -530,6 +538,7 @@ bool OtaManager::flashMcuFirmware(const QString& firmwarePath) {
     return sendOtaViaDbus(firmwarePath);
 }
 
+/** Sends firmware data in chunks to the MCU over D-Bus via ProtocolRouter. */
 bool OtaManager::sendOtaViaDbus(const QString& firmwarePath) {
     QFile firmware(firmwarePath);
     if (!firmware.open(QIODevice::ReadOnly)) {
@@ -612,8 +621,7 @@ bool OtaManager::sendOtaViaDbus(const QString& firmwarePath) {
     return true;
 }
 
-// ========== Linux App Service Update ==========
-
+/** Updates a Linux app service: stops, backs up, replaces binary, restarts. */
 bool OtaManager::updateAppService(const QString& serviceName, const QString& packagePath) {
     logInfo(QString("Updating app service: %1 from %2").arg(serviceName, packagePath));
 
@@ -673,6 +681,7 @@ bool OtaManager::updateAppService(const QString& serviceName, const QString& pac
     return true;
 }
 
+/** Stops a systemd service by name using systemctl. */
 bool OtaManager::stopService(const QString& serviceName) {
     logInfo(QString("Stopping service: %1").arg(serviceName));
 
@@ -695,6 +704,7 @@ bool OtaManager::stopService(const QString& serviceName) {
     return true;
 }
 
+/** Starts a systemd service by name using systemctl. */
 bool OtaManager::startService(const QString& serviceName) {
     logInfo(QString("Starting service: %1").arg(serviceName));
 
@@ -717,6 +727,7 @@ bool OtaManager::startService(const QString& serviceName) {
     return true;
 }
 
+/** Replaces a service binary, extracting from tar.gz archive if needed. */
 bool OtaManager::replaceServiceBinary(const QString& serviceName, const QString& newBinaryPath) {
     Q_UNUSED(serviceName);
 
@@ -772,18 +783,19 @@ bool OtaManager::replaceServiceBinary(const QString& serviceName, const QString&
     return true;
 }
 
+/** Returns the install path for the given service name. */
 QString OtaManager::getServiceBinaryPath(const QString& serviceName) const {
     return s_serviceMap.value(serviceName, QString("%1/%2").arg(m_serviceInstallDir, serviceName));
 }
 
+/** Returns a timestamped backup file path for the given service binary. */
 QString OtaManager::getServiceBackupPath(const QString& serviceName) const {
     return QString("%1/%2.backup.%3")
         .arg(m_serviceInstallDir, serviceName,
              QDateTime::currentDateTime().toString("yyyyMMddHHmmss"));
 }
 
-// ========== Version Management ==========
-
+/** Reads the version file and stores the current system version. */
 bool OtaManager::checkCurrentVersion() {
     QFile versionFile(m_versionFilePath);
     if (!versionFile.open(QIODevice::ReadOnly)) {
@@ -806,6 +818,7 @@ bool OtaManager::checkCurrentVersion() {
     return false;
 }
 
+/** Writes the given version string to the version file with a timestamp. */
 bool OtaManager::writeVersionFile(const QString& version) {
     QJsonObject obj;
     obj["version"] = version;
@@ -827,8 +840,7 @@ bool OtaManager::writeVersionFile(const QString& version) {
     return true;
 }
 
-// ========== D-Bus Helpers ==========
-
+/** Calls a method on the ProtocolRouter D-Bus interface with the given arguments. */
 bool OtaManager::callRouterMethod(const QString& method, const QVariantList& args) {
     QDBusInterface iface(SPS::DBus::SERVICE_ROUTER,
                           SPS::DBus::PATH_ROUTER,
@@ -852,6 +864,7 @@ bool OtaManager::callRouterMethod(const QString& method, const QVariantList& arg
     return reply.value().toBool();
 }
 
+/** Connects to NetworkManager's OtaCommandReceived D-Bus signal. */
 bool OtaManager::connectToNetworkManager() {
     QDBusConnection bus = QDBusConnection::systemBus();
 
@@ -871,6 +884,7 @@ bool OtaManager::connectToNetworkManager() {
     return ok;
 }
 
+/** Connects to ProtocolRouter's ConnectionStatusChanged D-Bus signal. */
 bool OtaManager::connectToProtocolRouter() {
     QDBusConnection bus = QDBusConnection::systemBus();
 
@@ -888,31 +902,32 @@ bool OtaManager::connectToProtocolRouter() {
     return ok;
 }
 
-// ========== Timers ==========
-
+/** Called when the update timer expires; sets error state for timeout. */
 void OtaManager::onUpdateTimeout() {
     logError("Update timed out");
     setError("Update timed out after " + QString::number(m_updateTimeoutMs / 1000) + " seconds");
 }
 
+/** Called periodically to re-read and log the current system version. */
 void OtaManager::onVersionCheckTimeout() {
     logInfo("Periodic version check");
     checkCurrentVersion();
 }
 
+/** Called when the ProtocolRouter reports MCU flash progress. */
 void OtaManager::onMcuFlashProgress(int percentage) {
     logDebug(QString("MCU flash progress from router: %1%").arg(percentage));
     // Progress is tracked locally in sendOtaViaDbus
 }
 
+/** Called when an app service update process finishes (currently unused). */
 void OtaManager::onAppUpdateFinished(int exitCode, QProcess::ExitStatus exitStatus) {
     Q_UNUSED(exitCode);
     Q_UNUSED(exitStatus);
     // Handled in the service update flow
 }
 
-// ========== Error Handling ==========
-
+/** Sets the error state, emits failure signals, and cleans up partial downloads. */
 void OtaManager::setError(const QString& message) {
     m_state.stage = OtaStage::FAILED;
     m_state.errorMessage = message;

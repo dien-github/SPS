@@ -3,6 +3,7 @@
 #include <QDebug>
 #include <QThread>
 
+/** Constructs the RFID reader with default settings and creates the debounce timer. */
 RfidReader::RfidReader(QObject* parent)
     : QObject(parent), m_isConnected(false), m_isReading(false),
       m_readTimeoutMs(1000), m_debounceMs(100),
@@ -13,6 +14,7 @@ RfidReader::RfidReader(QObject* parent)
     m_debounceTimer.setSingleShot(true);
 }
 
+/** Destructor - disconnects from hardware and deletes the serial port object. */
 RfidReader::~RfidReader() {
     if (m_isConnected) {
         disconnect();
@@ -22,7 +24,7 @@ RfidReader::~RfidReader() {
     }
 }
 
-// Connect RFID reader (serial or GPIO)
+/** Tries GPIO connection first; falls back to serial if GPIO fails. */
 bool RfidReader::connectHardware(const QString& gpioPin) {
     m_gpioPin = gpioPin;
 
@@ -46,7 +48,7 @@ bool RfidReader::connectHardware(const QString& gpioPin) {
     return false;
 }
 
-// Disconnect RFID reader
+/** Disconnects the RFID reader: closes serial port, stops timers, emits signals. */
 bool RfidReader::disconnect() {
     if (m_serial && m_serial->isOpen()) {
         m_serial->close();
@@ -61,7 +63,7 @@ bool RfidReader::disconnect() {
     return true;
 }
 
-// Connect via serial port
+/** Opens a serial connection to the RFID reader and connects readyRead/error signals. */
 bool RfidReader::connectSerial(const QString& portName, int baudRate) {
     if (!m_serial) {
         m_serial = new QSerialPort(this);
@@ -86,7 +88,7 @@ bool RfidReader::connectSerial(const QString& portName, int baudRate) {
     return true;
 }
 
-// Setup GPIO input
+/** Exports a GPIO pin, sets direction to input, and enables rising-edge detection. */
 bool RfidReader::setupGpioInput(const QString& gpioPin) {
     m_gpioPin = gpioPin;
     m_gpioPath = QString("/sys/class/gpio/gpio%1").arg(gpioPin);
@@ -124,7 +126,7 @@ bool RfidReader::setupGpioInput(const QString& gpioPin) {
     return true;
 }
 
-// Setup GPIO interrupt (inotify-based)
+/** Sets up GPIO as input (currently polling-based; inotify TODO). */
 bool RfidReader::setupGpioInterrupt(const QString& gpioPin) {
     if (!setupGpioInput(gpioPin)) {
         return false;
@@ -137,7 +139,7 @@ bool RfidReader::setupGpioInterrupt(const QString& gpioPin) {
     return true;
 }
 
-// Write to GPIO file
+/** Writes a value to a sysfs GPIO file (e.g. direction, edge). */
 bool RfidReader::writeGpioFile(const QString& path, const QString& value) {
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
@@ -148,7 +150,7 @@ bool RfidReader::writeGpioFile(const QString& path, const QString& value) {
     return true;
 }
 
-// Read from GPIO file
+/** Reads a value from a sysfs GPIO file and returns it as a trimmed string. */
 QString RfidReader::readGpioFile(const QString& path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -159,7 +161,7 @@ QString RfidReader::readGpioFile(const QString& path) {
     return value;
 }
 
-// Start reading RFID data
+/** Starts reading (only works if hardware is connected). */
 void RfidReader::startReading() {
     if (!m_isConnected) {
         emit readerError("Reader not connected");
@@ -170,14 +172,14 @@ void RfidReader::startReading() {
     emit statusChanged("Reading...");
 }
 
-// Stop reading RFID data
+/** Stops reading and stops the debounce timer. */
 void RfidReader::stopReading() {
     m_isReading = false;
     m_debounceTimer.stop();
     emit statusChanged("Stopped");
 }
 
-// Slot: Serial data ready
+/** Slot: reads available serial data and processes it as an RFID read. */
 void RfidReader::onSerialReadyRead() {
     if (!m_isReading) {
         return;
@@ -195,14 +197,14 @@ void RfidReader::onSerialReadyRead() {
     processRfidData(rfidData);
 }
 
-// Slot: Serial error
+/** Slot: emits readerError with the serial port's error string. */
 void RfidReader::onSerialError() {
     if (m_serial) {
         emit readerError(m_serial->errorString());
     }
 }
 
-// Slot: GPIO interrupt
+/** Slot: handles a GPIO rising edge, applies debounce, and processes the read. */
 void RfidReader::onGpioInterrupt() {
     if (!m_isReading || m_debounceTimer.isActive()) {
         return;
@@ -219,12 +221,12 @@ void RfidReader::onGpioInterrupt() {
     }
 }
 
-// Slot: Debounce timeout
+/** Slot: called when the debounce timer completes (currently a no-op). */
 void RfidReader::onDebounceTimeout() {
     // Debounce complete
 }
 
-// Process RFID data
+/** Validates RFID data length (4-50 chars) and emits rfidRead on success. */
 void RfidReader::processRfidData(const QString& data) {
     if (data.isEmpty()) {
         return;

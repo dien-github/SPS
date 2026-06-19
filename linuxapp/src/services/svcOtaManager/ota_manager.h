@@ -12,7 +12,7 @@
 #include <QDirIterator>
 #include "../common/sps_service_base.h"
 
-// OTA update stages
+/** OTA update stages. */
 enum class OtaStage {
     IDLE,
     DOWNLOADING_MCU,
@@ -24,7 +24,7 @@ enum class OtaStage {
     FAILED
 };
 
-// OTA update state
+/** Holds the current state and progress of an OTA update. */
 struct OtaUpdateState {
     OtaStage stage;
     int progress;
@@ -36,86 +36,116 @@ struct OtaUpdateState {
     QString errorMessage;
     bool cancelled;
 
+    /** Constructor. Initializes stage to IDLE, progress to 0, cancelled to false. */
     OtaUpdateState()
         : stage(OtaStage::IDLE), progress(0), cancelled(false) {}
 };
 
-// OTA Manager Service
-// Orchestrates firmware and application updates
-// Downloads firmware from URL, flashes MCU via UART through ProtocolRouter,
-// and updates Linux app services by replacing binaries
+/** Orchestrates firmware and application OTA updates over D-Bus. */
 class OtaManager : public SpsServiceBase {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "com.sps.otamanager")
 
 public:
+    /** Constructor. */
     explicit OtaManager(QObject* parent = nullptr);
+    /** Destructor. */
     ~OtaManager();
 
-    // Service lifecycle
+    /** Initializes the service. */
     bool initialize() override;
+    /** Shuts down the service and cleans up. */
     void shutdown() override;
+    /** Returns a human-readable status string. */
     QString getStatus() const override;
 
-    // Update stages
+    /** Converts an OtaStage enum value to a string. */
     static QString stageToString(OtaStage stage);
 
 signals:
-    // D-Bus signals
+    /** Emitted when the overall update status changes. */
     void UpdateStatusChanged(const QString& status);
+    /** Emitted to report update progress percentage and current stage. */
     void UpdateProgress(int percentage, const QString& stage);
+    /** Emitted when an update completes (success or failure). */
     void UpdateCompleted(bool success, const QString& message);
+    /** Emitted when a new MCU firmware version is available. */
     void McuFirmwareUpdateRequired(const QString& version, const QString& downloadUrl);
 
 public slots:
-    // D-Bus methods
+    /** Returns the current OTA stage as a string. */
     Q_SCRIPTABLE QString GetOtaStatus() const;
+    /** Starts an MCU firmware update from a URL. */
     Q_SCRIPTABLE bool StartMcuFirmwareUpdate(const QString& firmwareUrl, const QString& expectedChecksum);
+    /** Starts an app service binary update from a URL. */
     Q_SCRIPTABLE bool StartAppServiceUpdate(const QString& serviceName, const QString& packageUrl, const QString& expectedChecksum);
+    /** Starts a combined MCU + app update sequence. */
     Q_SCRIPTABLE bool StartFullUpdate(const QString& mcuFirmwareUrl, const QString& mcuChecksum,
                                       const QString& appPackageUrl, const QString& appChecksum);
+    /** Returns the current update progress percentage (0-100). */
     Q_SCRIPTABLE int GetUpdateProgress() const;
+    /** Returns the current system version string. */
     Q_SCRIPTABLE QString GetCurrentVersion() const;
+    /** Cancels the currently running update, if any. */
     Q_SCRIPTABLE bool CancelUpdate();
 
-    // D-Bus signal handlers from other services
+    /** Handles an OTA command received from NetworkManager. */
     void onOtaCommandReceived(const QString& firmwareUrl);
+    /** Handles connection status changes from ProtocolRouter. */
     void onRouterConnectionStatusChanged(const QString& status);
 
 protected slots:
+    /** Advances to the next stage of the update process. */
     void startNextStage();
+    /** Called when download bytes are received. */
     void onDownloadProgress(qint64 received, qint64 total);
+    /** Called when the current download completes. */
     void onDownloadFinished();
+    /** Called when MCU flash progress is reported by ProtocolRouter. */
     void onMcuFlashProgress(int percentage);
+    /** Called when an app service process finishes updating. */
     void onAppUpdateFinished(int exitCode, QProcess::ExitStatus exitStatus);
+    /** Called when the update timer expires. */
     void onUpdateTimeout();
+    /** Called periodically to check the current version. */
     void onVersionCheckTimeout();
 
 private:
-    // Download handling
+    /** Downloads a file from a URL to a local path. */
     bool downloadFile(const QString& url, const QString& destPath);
+    /** Verifies a SHA-256 checksum of a file. */
     bool verifyChecksum(const QString& filePath, const QString& expectedChecksum);
+    /** Returns the default download directory path. */
     QString getDefaultDownloadPath() const;
 
-    // MCU firmware update
+    /** Flashes firmware to the MCU via ProtocolRouter. */
     bool flashMcuFirmware(const QString& firmwarePath);
+    /** Sends firmware chunks to the MCU over D-Bus. */
     bool sendOtaViaDbus(const QString& firmwarePath);
 
-    // Linux app service update
+    /** Updates a Linux app service binary from a package. */
     bool updateAppService(const QString& serviceName, const QString& packagePath);
+    /** Stops a systemd service by name. */
     bool stopService(const QString& serviceName);
+    /** Starts a systemd service by name. */
     bool startService(const QString& serviceName);
+    /** Replaces a service binary (supports direct copy or tar.gz extraction). */
     bool replaceServiceBinary(const QString& serviceName, const QString& newBinaryPath);
+    /** Returns the install path for a given service. */
     QString getServiceBinaryPath(const QString& serviceName) const;
+    /** Returns a timestamped backup path for a service binary. */
     QString getServiceBackupPath(const QString& serviceName) const;
 
-    // Version management
+    /** Reads and stores the current version from the version file. */
     bool checkCurrentVersion();
+    /** Writes the given version string to the version file. */
     bool writeVersionFile(const QString& version);
 
-    // D-Bus helpers
+    /** Calls a method on the ProtocolRouter D-Bus interface. */
     bool callRouterMethod(const QString& method, const QVariantList& args);
+    /** Connects to NetworkManager D-Bus signals. */
     bool connectToNetworkManager();
+    /** Connects to ProtocolRouter D-Bus signals. */
     bool connectToProtocolRouter();
 
     // Configuration
@@ -142,7 +172,7 @@ private:
     // Current app service being updated
     QString m_currentServiceName;
 
-    // Error handling
+    /** Sets error state and emits failure signals. */
     void setError(const QString& message);
 
     // Backup paths for rollback

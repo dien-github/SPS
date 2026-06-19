@@ -35,7 +35,7 @@
     
     <signal name="LecturerAuthenticated">
       <arg type="s" name="lecturerName"/>
-      <arg type="i" name="timestamp"/>
+      <arg type="x" name="timestamp"/>
       <!-- Emitted when lecturer successfully authenticates -->
     </signal>
     

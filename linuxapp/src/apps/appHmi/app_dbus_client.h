@@ -60,6 +60,7 @@ signals:
     void scenariosUpdated(const QStringList& scenarios);
 
     // Service events
+    void lecturerAuthenticated(const QString& lecturerName, qlonglong timestamp);
     void scenarioStarted(const QString& scenarioId);
     void scenarioCompleted(const QString& scenarioId);
     void scenarioError(const QString& scenarioId, const QString& error);

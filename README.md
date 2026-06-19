@@ -41,6 +41,14 @@ Một phòng học có một PCD, tức Podium Control Device. PCD là hệ th�
     Đèn, rèm, màn chiếu, máy chiếu, điều hòa, máy tính trạm
 ```
 
+### Giao diện hệ thống
+
+#### **Web Dashboard** – quản lý phòng học, thiết bị, giảng viên và OTA firmware
+![Web Dashboard](docs/images/WebUi_RoomMgr.png)
+
+#### **HMI trên PCD** – màn hình cảm ứng cho giảng viên tại bục
+![HMI](docs/images/Hmi_ControlPanel.png) |
+
 Các vai trò chính:
 
 | Thành phần | Chạy ở đâu | Vai trò |
@@ -307,10 +315,13 @@ REST API chính:
 | `PUT /api/lecturers/:lecturerId` | Cập nhật giảng viên |
 | `DELETE /api/lecturers/:lecturerId` | Xóa giảng viên |
 | `GET /api/rooms` | Danh sách phòng và số thiết bị đang bật |
+| `GET /api/overview` | Tổng quan IT Admin cho PCD, runtime MQTT, RFID sync, OTA và lỗi gần nhất |
+| `GET /api/events?roomId=&limit=` | Danh sách event/audit gần nhất từ bảng events |
 | `GET /api/rooms/:roomId/config` | Cấu hình phòng kèm danh sách thiết bị |
 | `GET /api/rooms/:roomId/devices` | Danh sách thiết bị trong phòng |
 | `POST /api/rooms/:roomId/commands` | Publish command tùy ý qua MQTT |
-| `POST /api/rooms/:roomId/devices/:deviceId/control` | Điều khiển thiết bị, cập nhật DB và publish MQTT |
+| `POST /api/rooms/:roomId/devices/:deviceId/control` | Gửi remote intervention command, ghi audit, chờ status event xác nhận trạng thái vật lý |
+| `POST /api/rooms/sync` | Gửi danh sách lecturer hiện tại xuống toàn bộ PCD |
 | `POST /api/rooms/:roomId/sync` | Gửi danh sách lecturer hiện tại xuống PCD |
 | `GET /api/ota` | Liệt kê file OTA trong `OTA_DIR` |
 | `POST /api/rooms/:roomId/ota` | Publish lệnh OTA gồm `version`, `url`, `checksum` |

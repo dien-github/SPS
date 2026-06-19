@@ -304,6 +304,18 @@ bool AppDbusCli::controlClassroomDevice(const QString& deviceKey, const QString&
         return sendDeviceCommand(SPS::UART::toByte(SPS::UART::CommandId::PROJECTOR_CONTROL), normalizedAction);
     }
     if (key == "airconditioner" || key == "ac") {
+        if (normalizedAction == "tempup" || normalizedAction == "temperatureup" ||
+            normalizedAction == "increase" || normalizedAction == "up") {
+            return callRouterBool("IncreaseACTemperature", {
+                QVariant::fromValue(static_cast<quint8>(SPS::UART::toByte(SPS::UART::DeviceId::AC_ID)))
+            });
+        }
+        if (normalizedAction == "tempdown" || normalizedAction == "temperaturedown" ||
+            normalizedAction == "decrease" || normalizedAction == "down") {
+            return callRouterBool("DecreaseACTemperature", {
+                QVariant::fromValue(static_cast<quint8>(SPS::UART::toByte(SPS::UART::DeviceId::AC_ID)))
+            });
+        }
         return sendDeviceCommand(SPS::UART::toByte(SPS::UART::CommandId::AC_CONTROL), normalizedAction);
     }
 

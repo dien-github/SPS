@@ -37,6 +37,8 @@ enum class CommandId : uint8_t {
     CURTAIN_CONTROL = 0x22,
     PROJECTOR_CONTROL = 0x23,
     AC_CONTROL = 0x24,
+    AC_TEMP_UP = 0x25,
+    AC_TEMP_DOWN = 0x26,
 
     QUERY_RELAY_STATUS = 0x32,
     PRESENCE_ALERT = 0x41,
@@ -136,6 +138,12 @@ inline QByteArray buildProjectorControlPayload(bool on) {
 
 inline QByteArray buildAcControlPayload(uint8_t acId, bool on) {
     return buildDeviceControlPayload(acId, on ? ControlValue::ON : ControlValue::OFF);
+}
+
+inline QByteArray buildAcTemperatureStepPayload(uint8_t acId) {
+    QByteArray payload;
+    payload.append(static_cast<char>(acId));
+    return payload;
 }
 
 inline QByteArray buildQueryRelayStatusPayload(uint8_t deviceId) {

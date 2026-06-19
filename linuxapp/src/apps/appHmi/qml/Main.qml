@@ -197,10 +197,11 @@ ApplicationWindow {
     component DeviceCard: Rectangle {
         property string title: ""
         property string subtitle: ""
+        property int actionColumns: 2
         default property alias actionItems: actionRow.data
 
         Layout.fillWidth: true
-        Layout.preferredHeight: 132
+        Layout.preferredHeight: 88 + Math.ceil(actionRow.children.length / actionColumns) * 56
         radius: 8
         color: "#ffffff"
         border.color: "#d8dee8"
@@ -233,10 +234,12 @@ ApplicationWindow {
                 }
             }
 
-            RowLayout {
+            GridLayout {
                 id: actionRow
+                columns: actionColumns
                 Layout.fillWidth: true
-                spacing: 8
+                columnSpacing: 8
+                rowSpacing: 8
             }
         }
     }
@@ -591,6 +594,7 @@ ApplicationWindow {
                                 DeviceCard {
                                     title: "Projection Screen"
                                     subtitle: "Screen lift control"
+                                    actionColumns: 3
 
                                     ControlButton {
                                         text: "UP"
@@ -630,7 +634,7 @@ ApplicationWindow {
 
                                 DeviceCard {
                                     title: "Air Conditioner"
-                                    subtitle: "Temporary ON/OFF control"
+                                    subtitle: "ON/OFF and temperature step control"
 
                                     ControlButton {
                                         text: "ON"
@@ -642,6 +646,18 @@ ApplicationWindow {
                                         text: "OFF"
                                         tone: "danger"
                                         onClicked: controlDevice("airConditioner", "off")
+                                    }
+
+                                    ControlButton {
+                                        text: "TEMP -"
+                                        tone: "stop"
+                                        onClicked: controlDevice("airConditioner", "tempDown")
+                                    }
+
+                                    ControlButton {
+                                        text: "TEMP +"
+                                        tone: "primary"
+                                        onClicked: controlDevice("airConditioner", "tempUp")
                                     }
                                 }
                             }

@@ -98,6 +98,10 @@ public slots:
     Q_SCRIPTABLE bool ControlProjector(bool on);
     /** Turns an air conditioner on (true) or off (false). */
     Q_SCRIPTABLE bool ControlAC(uchar acId, bool on);
+    /** Increases the air conditioner temperature by one step. */
+    Q_SCRIPTABLE bool IncreaseACTemperature(uchar acId);
+    /** Decreases the air conditioner temperature by one step. */
+    Q_SCRIPTABLE bool DecreaseACTemperature(uchar acId);
 
 protected slots:
     // UART port signal handlers

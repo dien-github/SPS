@@ -189,7 +189,7 @@ Các method/signal chính theo XML:
 | --- | --- | --- |
 | `com.sps.auth` | `GetAuthStatus() -> i`, `UnlockScreen(s rfidData) -> b`, `LockScreen() -> b`, `GetAuthenticatedLecturer() -> s` | `AuthStatusChanged(i)`, `LecturerAuthenticated(s,x)`, `AuthenticationFailed(s)` |
 | `com.sps.engine` | `GetAvailableScenarios() -> as`, `ExecuteScenario(s) -> b`, `GetScenarioStatus(s) -> s`, `StopScenario(s) -> b`, `GetScenarioInfo(s) -> s,s,i`, `ControlDevice(y,s) -> b`, `RegisterContextTrigger(s,s) -> b`, `GetEngineStatus() -> s` | `ScenarioStarted(s)`, `ScenarioCompleted(s)`, `ScenarioError(s,s)`, `CommandExecuting(s,i,s)`, `ContextTriggered(s,s)` |
-| `com.sps.router` | `ControlLight(y,b) -> b`, `ControlCurtain(y,y) -> b`, `ControlProjector(b) -> b`, `ControlAC(y,b) -> b`, `SendCommand(y,ay) -> b`, `GetDeviceStatus(y) -> y`, `GetConnectionStatus() -> s`, `ResetConnection() -> b`, `StartOTA(u) -> b`, `SendOTAChunk(q,ay) -> b`, `EndOTA() -> b` | `ConnectionStatusChanged(s)`, `CommandAcknowledged(y)`, `CommandError(y,y)`, `DeviceStatusChanged(y,y)`, `PresenceDetected(b)`, `OTAProgress(i)` |
+| `com.sps.router` | `ControlLight(y,b) -> b`, `ControlCurtain(y,y) -> b`, `ControlProjector(b) -> b`, `ControlAC(y,b) -> b`, `IncreaseACTemperature(y) -> b`, `DecreaseACTemperature(y) -> b`, `SendCommand(y,ay) -> b`, `GetDeviceStatus(y) -> y`, `GetConnectionStatus() -> s`, `ResetConnection() -> b`, `StartOTA(u) -> b`, `SendOTAChunk(q,ay) -> b`, `EndOTA() -> b` | `ConnectionStatusChanged(s)`, `CommandAcknowledged(y)`, `CommandError(y,y)`, `DeviceStatusChanged(y,y)`, `PresenceDetected(b)`, `OTAProgress(i)` |
 | `com.sps.netmgr` | `GetNetworkStatus() -> s`, `GetMqttStatus() -> s`, `PublishEvent(s,ay,i) -> b`, `GetRoomId() -> s`, `SetRoomId(s) -> b`, `SendWakeOnLAN(s,s) -> b`, `SyncLecturerList() -> b`, `GetConnectionDetails() -> s,s,s`, `RequestOTAUpdate(s) -> b`, `IsPcControlEnabled() -> b`, `GetPcMacAddress() -> s` | `NetworkConnected(s)`, `NetworkDisconnected(s)`, `MqttConnected()`, `MqttDisconnected(s)`, `MqttMessageReceived(s,ay)`, `CommandReceived(s,ay)`, `LecturerListUpdated(i)`, `OTAUpdateAvailable(s,s)` |
 | `com.sps.otamanager` | `GetOtaStatus() -> s`, `StartMcuFirmwareUpdate(s,s) -> b`, `StartAppServiceUpdate(s,s,s) -> b`, `StartFullUpdate(s,s,s,s) -> b`, `GetUpdateProgress() -> i`, `GetCurrentVersion() -> s`, `CancelUpdate() -> b` | `UpdateStatusChanged(s)`, `UpdateProgress(i,s)`, `UpdateCompleted(b,s)`, `McuFirmwareUpdateRequired(s,s)` |
 
@@ -232,6 +232,8 @@ Command ID chính:
 | `CURTAIN_CONTROL` | `0x22` | Điều khiển rèm/màn |
 | `PROJECTOR_CONTROL` | `0x23` | Điều khiển máy chiếu |
 | `AC_CONTROL` | `0x24` | Điều khiển điều hòa |
+| `AC_TEMP_UP` | `0x25` | Tăng nhiệt độ điều hòa một bước |
+| `AC_TEMP_DOWN` | `0x26` | Giảm nhiệt độ điều hòa một bước |
 | `QUERY_RELAY_STATUS` | `0x32` | Đọc trạng thái relay |
 | `PRESENCE_ALERT` | `0x41` | Sự kiện cảm biến hiện diện |
 | `OTA_START`, `OTA_DATA_CHUNK`, `OTA_END` | `0x50`-`0x52` | Nạp firmware MCU |
@@ -247,6 +249,8 @@ Payload contract chính:
 | `CURTAIN_CONTROL` | `[curtainOrScreenId][action]`, `action`: `0x00` close, `0x01` open, `0x02` stop |
 | `PROJECTOR_CONTROL` | `[value]`, `0x00` off, `0x01` on |
 | `AC_CONTROL` | `[acId][value]`, `0x00` off, `0x01` on |
+| `AC_TEMP_UP` | `[acId]` |
+| `AC_TEMP_DOWN` | `[acId]` |
 | `QUERY_RELAY_STATUS` | Request `[deviceId]`, response `[deviceId][status]` |
 | `PRESENCE_ALERT` | `[isPresent]`, `0x00` false, non-zero true |
 | `OTA_START` | `[firmwareSize uint32 little-endian]` |

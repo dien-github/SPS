@@ -284,6 +284,18 @@ bool ProtocolRouter::ControlAC(uchar acId, bool on) {
     return SendCommand(static_cast<uchar>(UART::CommandId::AC_CONTROL), payload);
 }
 
+/** Increases the air conditioner temperature by one step. */
+bool ProtocolRouter::IncreaseACTemperature(uchar acId) {
+    QByteArray payload = SPS::UART::buildAcTemperatureStepPayload(acId);
+    return SendCommand(static_cast<uchar>(UART::CommandId::AC_TEMP_UP), payload);
+}
+
+/** Decreases the air conditioner temperature by one step. */
+bool ProtocolRouter::DecreaseACTemperature(uchar acId) {
+    QByteArray payload = SPS::UART::buildAcTemperatureStepPayload(acId);
+    return SendCommand(static_cast<uchar>(UART::CommandId::AC_TEMP_DOWN), payload);
+}
+
 // ========== Private Methods ==========
 
 /** Adds a command to the transmit queue and starts processing if idle. */

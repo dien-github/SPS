@@ -33,6 +33,18 @@
       <!-- Typed air conditioner control command; router builds the UART payload -->
     </method>
 
+    <method name="IncreaseACTemperature">
+      <arg type="y" direction="in" name="acId"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Typed air conditioner temperature increase command; router builds the UART payload -->
+    </method>
+
+    <method name="DecreaseACTemperature">
+      <arg type="y" direction="in" name="acId"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Typed air conditioner temperature decrease command; router builds the UART payload -->
+    </method>
+
     <method name="SendCommand">
       <arg type="y" direction="in" name="cmdId"/>
       <arg type="ay" direction="in" name="payload"/>

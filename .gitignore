@@ -9,6 +9,7 @@ docs/
 **.save
 **/.qt/
 **/output/
+logs/
 
 # Python
 __pycache__/

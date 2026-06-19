@@ -8,6 +8,7 @@ set(COMMON_HEADERS
 	sps_device_models.h
 	sps_service_base.h
 	sps_message_queue.h
+	sps_runtime_config.h
 )
 
 add_library(SpsCommon STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})

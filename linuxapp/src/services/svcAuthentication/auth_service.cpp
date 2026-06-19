@@ -1,5 +1,6 @@
 #include "auth_service.h"
 #include "../common/sps_logger.h"
+#include "../common/sps_runtime_config.h"
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -9,7 +10,7 @@
 AuthService::AuthService(QObject* parent)
     : SpsServiceBase("com.sps.auth", "/com/sps/auth", parent),
       m_lockTimeoutMs(300000),  // 5 minutes default
-      m_databasePath("/opt/sps/config/lecturers.json"),
+      m_databasePath(SPS::Runtime::configFile("SPS_LECTURERS_FILE", "lecturers.json")),
       m_status(LOCKED),
       m_totalAuthAttempts(0),
       m_successfulAuths(0),

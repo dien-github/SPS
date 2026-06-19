@@ -1,5 +1,6 @@
 #include "app_dbus_client.h"
 #include "sps_logger.h"
+#include "sps_runtime_config.h"
 #include <QDBusConnection>
 #include <QDBusReply>
 #include <QJsonDocument>
@@ -18,7 +19,9 @@ AppDbusCli::AppDbusCli(QObject* parent)
       m_engineInterface(nullptr),
       m_netMgrInterface(nullptr),
       m_authStatus("UNKNOWN"),
-      m_mqttStatus("DISCONNECTED") {
+      m_mqttStatus("DISCONNECTED"),
+      m_pcControlEnabled(SPS::Runtime::envBool("SPS_ENABLE_PC_CONTROL", false)),
+      m_pcMacAddress(SPS::Runtime::envString("SPS_PC_MAC", "")) {
     logInfo("AppDbusCli", "Created");
 }
 
@@ -191,8 +194,8 @@ bool AppDbusCli::disconnectFromMqtt() {
 }
 
 bool AppDbusCli::sendWoL(const QString& macAddress) {
-    logInfo("AppDbusCli", QString("Sending WoL to %1").arg(macAddress));
-    QVariant result = callMethod(m_netMgrInterface, "SendWakeOnLAN", macAddress, "255.255.255.255");
+    QVariant result = callMethod(m_netMgrInterface, "SendWakeOnLAN", targetMac,
+                                 SPS::Runtime::envString("SPS_WOL_BROADCAST", "255.255.255.255"));
     return result.toBool();
 }
 

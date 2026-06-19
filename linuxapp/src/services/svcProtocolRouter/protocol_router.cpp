@@ -1,11 +1,12 @@
 #include "protocol_router.h"
 #include "../common/sps_logger.h"
+#include "../common/sps_runtime_config.h"
 #include <QThread>
 #include <QTimer>
 
 ProtocolRouter::ProtocolRouter(QObject* parent)
     : SpsServiceBase("com.sps.router", "/com/sps/router", parent),
-      m_uartPortName("/dev/ttyS0"),
+      m_uartPortName(SPS::Runtime::envString("SPS_UART_PORT", UART::DEFAULT_PORT)),
       m_commandTimeoutMs(1000),
       m_defaultRetries(3),
       m_uartPort(nullptr),
@@ -92,20 +93,20 @@ QString ProtocolRouter::getStatus() const {
 
 // Connect to MCU via UART
 bool ProtocolRouter::connectMcu(const QString& portName) {
-    m_uartPortName = portName;
+    m_uartPortName = SPS::Runtime::envString("SPS_UART_PORT", portName);
 
     if (!m_uartPort) {
         logError("UART port not initialized");
         return false;
     }
 
-    if (!m_uartPort->openPort(portName)) {
-        logError(QString("Failed to open UART port: %1").arg(portName));
+    if (!m_uartPort->openPort(m_uartPortName)) {
+        logError(QString("Failed to open UART port: %1").arg(m_uartPortName));
         emit ConnectionStatusChanged("DISCONNECTED");
         return false;
     }
 
-    logInfo(QString("Connected to MCU on port: %1").arg(portName));
+    logInfo(QString("Connected to MCU on port: %1").arg(m_uartPortName));
 
     // Send heartbeat to verify connection
     SendCommand(static_cast<uchar>(UART::CommandId::PING_HEARTBEAT), QByteArray());

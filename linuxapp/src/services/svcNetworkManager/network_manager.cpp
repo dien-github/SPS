@@ -1,5 +1,6 @@
 #include "network_manager.h"
 #include "../common/sps_logger.h"
+#include "../common/sps_runtime_config.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -13,7 +14,7 @@ NetworkManager::NetworkManager(QObject* parent)
     : SpsServiceBase("com.sps.netmgr", "/com/sps/netmgr", parent),
       m_mqttPort(1883),
       m_deviceId("sps-pi-001"),
-      m_configPath("/opt/sps/config/config.json"),
+      m_configPath(SPS::Runtime::configFile("SPS_CONFIG_FILE", "config.json")),
       m_mqttClient(nullptr),
       m_mqttConnected(false),
       m_mqttReconnectCount(0),
@@ -72,8 +73,10 @@ bool NetworkManager::initialize() {
         }
     }
 
-    logInfo(QString("Configuration loaded: broker=%1:%2, roomId=%3, deviceId=%4")
-        .arg(m_mqttBroker).arg(m_mqttPort).arg(m_roomId).arg(m_deviceId));
+    m_pcControlEnabled = SPS::Runtime::envBool("SPS_ENABLE_PC_CONTROL", m_pcControlEnabled);
+    m_pcMacAddress = SPS::Runtime::envString("SPS_PC_MAC", m_pcMacAddress);
+    m_wolBroadcastAddress = SPS::Runtime::envString("SPS_WOL_BROADCAST", m_wolBroadcastAddress);
+    m_wolPort = SPS::Runtime::envInt("SPS_WOL_PORT", m_wolPort);
 
     // Register D-Bus service
     if (!registerService()) {

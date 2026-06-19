@@ -13,7 +13,7 @@
 
 // Network Manager Service
 // Handles MQTT communication with Web Dashboard
-// Manages network connectivity and WoL (Wake-on-LAN) broadcasting
+// Manages network connectivity and optional WoL (Wake-on-LAN) broadcasting
 class NetworkManager : public SpsServiceBase {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "com.sps.netmgr")

@@ -1,5 +1,6 @@
 #include "scenario_engine.h"
 #include "../common/sps_logger.h"
+#include "../common/sps_runtime_config.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -9,7 +10,7 @@
 
 ScenarioEngine::ScenarioEngine(QObject* parent)
     : SpsServiceBase("com.sps.engine", "/com/sps/engine", parent),
-      m_scenariosPath("/opt/sps/config/scenarios.json"),
+      m_scenariosPath(SPS::Runtime::configFile("SPS_SCENARIOS_FILE", "scenarios.json")),
       m_routerInterface(nullptr),
       m_authInterface(nullptr),
       m_scenariosExecuted(0),

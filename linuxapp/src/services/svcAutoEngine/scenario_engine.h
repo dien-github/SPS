@@ -11,6 +11,7 @@
 #include <QDBusInterface>
 #include "../common/sps_service_base.h"
 #include "../common/sps_device_models.h"
+#include "device_map.h"
 
 /** Manages execution of automation scenarios. Coordinates with ProtocolRouter for device control. */
 class ScenarioEngine : public SpsServiceBase {
@@ -34,6 +35,8 @@ public:
     // Scenario management
     /** Loads scenarios from a JSON file. Falls back to sample scenarios if the file is missing. */
     bool loadScenarios(const QString& scenariosPath = "/opt/sps/config/scenarios.json");
+    /** Loads device mapping from a JSON file. Falls back to demo map if file is missing. */
+    bool loadDeviceMap(const QString& deviceMapPath = "/opt/sps/config/devices.json");
     /** Registers a context-to-scenario mapping so a context event auto-triggers a scenario. */
     bool registerContextTrigger(const QString& context, const QString& scenarioId);
 
@@ -135,6 +138,10 @@ private:
 
     // Configuration
     QString m_scenariosPath;
+    QString m_deviceMapPath;
+
+    // Device registry
+    DeviceMap m_deviceMap;
 
     // Scenarios storage (scenarioId -> Scenario)
     QMap<QString, Scenario> m_scenarios;

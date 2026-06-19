@@ -10,11 +10,13 @@ qt_add_dbus_adaptor(DBUS_ADAPTOR_SRCS
 set (SOURCES
         main.cpp
         scenario_engine.cpp
+        device_map.cpp
         ${DBUS_ADAPTOR_SRCS}
 )
 
 set(HEADERS
 	scenario_engine.h
+	device_map.h
 )
 
 add_executable(${TARGET_NAME} ${SOURCES} ${HEADERS})

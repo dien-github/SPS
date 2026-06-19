@@ -1,0 +1,10 @@
+{
+  "mqtt_broker": "127.0.0.1",
+  "mqtt_port": 1883,
+  "room_id": "room101",
+  "device_id": "sps-wsl-demo-001",
+  "enable_pc_control": false,
+  "pc_mac": "",
+  "wol_broadcast": "255.255.255.255",
+  "wol_port": 9
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "scenario-startup",
+    "name": "Startup",
+    "description": "Turn on classroom lights and projector",
+    "commands": [
+      {
+        "order": 1,
+        "device_type": "light",
+        "device_id": "2",
+        "target_state": "on",
+        "delay_ms": 0
+      },
+      {
+        "order": 2,
+        "device_type": "projector",
+        "device_id": "1",
+        "target_state": "on",
+        "delay_ms": 500
+      }
+    ]
+  },
+  {
+    "id": "scenario-shutdown",
+    "name": "Shutdown",
+    "description": "Turn off projector and classroom lights",
+    "commands": [
+      {
+        "order": 1,
+        "device_type": "projector",
+        "device_id": "1",
+        "target_state": "off",
+        "delay_ms": 0
+      },
+      {
+        "order": 2,
+        "device_type": "light",
+        "device_id": "2",
+        "target_state": "off",
+        "delay_ms": 500
+      }
+    ]
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "L001",
+    "name": "Demo Lecturer",
+    "rfid": "RFID001",
+    "authorized": true
+  },
+  {
+    "id": "L002",
+    "name": "Giang Vien Demo",
+    "rfid": "UID_giang_vien",
+    "authorized": true
+  },
+  {
+    "id": "L003",
+    "name": "Integration Test Lecturer",
+    "rfid": "VALID_LECTURER_001",
+    "authorized": true
+  }
+]

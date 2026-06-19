@@ -16,6 +16,8 @@ NetworkManager::NetworkManager(QObject* parent)
       m_mqttBroker("localhost"),
       m_mqttPort(1883),
       m_deviceId("sps-pi-001"),
+      m_staticIp(""),
+      m_declaredStatus("Active"),
       m_configPath(SPS::Runtime::configFile("SPS_CONFIG_FILE", "config.json")),
       m_pcControlEnabled(false),
       m_pcMacAddress(""),
@@ -80,6 +82,8 @@ bool NetworkManager::initialize() {
             m_mqttPort = config["mqtt_port"].toInt(1883);
             m_roomId = config["room_id"].toString("room-001");
             m_deviceId = config["device_id"].toString("sps-pi-001");
+            m_staticIp = config["static_ip"].toString("");
+            m_declaredStatus = config["declared_status"].toString("Active");
             m_pcControlEnabled = config["enable_pc_control"].toBool(false);
             m_pcMacAddress = config["pc_mac"].toString();
             m_wolBroadcastAddress = config["wol_broadcast"].toString("255.255.255.255");
@@ -91,9 +95,13 @@ bool NetworkManager::initialize() {
     m_pcMacAddress = SPS::Runtime::envString("SPS_PC_MAC", m_pcMacAddress);
     m_wolBroadcastAddress = SPS::Runtime::envString("SPS_WOL_BROADCAST", m_wolBroadcastAddress);
     m_wolPort = SPS::Runtime::envInt("SPS_WOL_PORT", m_wolPort);
+    m_staticIp = SPS::Runtime::envString("SPS_STATIC_IP", m_staticIp);
+    m_declaredStatus = SPS::Runtime::envString("SPS_DECLARED_STATUS", m_declaredStatus);
 
-    logInfo(QString("Configuration loaded: broker=%1:%2, roomId=%3, deviceId=%4, pcControl=%5")
+    logInfo(QString("Configuration loaded: broker=%1:%2, roomId=%3, deviceId=%4, "
+                    "ip=%5, declared=%6, pcControl=%7")
         .arg(m_mqttBroker).arg(m_mqttPort).arg(m_roomId).arg(m_deviceId)
+        .arg(m_staticIp).arg(m_declaredStatus)
         .arg(m_pcControlEnabled ? "enabled" : "disabled"));
 
     // Register D-Bus service
@@ -151,6 +159,8 @@ bool NetworkManager::connectToMqtt(const QString& broker, int port) {
     lwt["device_id"] = m_deviceId;
     lwt["room_id"] = m_roomId;
     lwt["status"] = "offline";
+    lwt["ip"] = m_staticIp;
+    lwt["declared_status"] = m_declaredStatus;
     lwt["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
     m_mqttClient->setLastWillAndTestament(
         QString("sps/%1/status/connection").arg(m_roomId),
@@ -582,6 +592,8 @@ void NetworkManager::onMqttConnected() {
     payload["device_id"] = m_deviceId;
     payload["room_id"] = m_roomId;
     payload["status"] = "connected";
+    payload["ip"] = m_staticIp;
+    payload["declared_status"] = m_declaredStatus;
     payload["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
     if (m_mqttClient->publish(QString("sps/%1/status/connection").arg(m_roomId),
                               QJsonDocument(payload).toJson(QJsonDocument::Compact),
@@ -626,7 +638,10 @@ void NetworkManager::publishHeartbeat() {
         QJsonObject payload;
         payload["device_id"] = m_deviceId;
         payload["room_id"] = m_roomId;
-        payload["status"] = "heartbeat";
+        payload["status"] = "online";
+        payload["ip"] = m_staticIp;
+        payload["declared_status"] = m_declaredStatus;
+        payload["uptime"] = QString::number(QDateTime::currentSecsSinceEpoch());
         payload["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
         if (m_mqttClient->publish(QString("sps/%1/status/connection").arg(m_roomId),
                                   QJsonDocument(payload).toJson(QJsonDocument::Compact),

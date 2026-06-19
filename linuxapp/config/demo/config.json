@@ -1,8 +1,10 @@
 {
   "mqtt_broker": "127.0.0.1",
   "mqtt_port": 1883,
-  "room_id": "room101",
-  "device_id": "sps-wsl-demo-001",
+  "room_id": "A01.01",
+  "device_id": "PCD-SPS-A0101",
+  "static_ip": "192.168.1.11",
+  "declared_status": "Active",
   "enable_pc_control": false,
   "pc_mac": "",
   "wol_broadcast": "255.255.255.255",

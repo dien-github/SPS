@@ -155,6 +155,8 @@ private:
     int m_mqttPort;
     QString m_roomId;
     QString m_deviceId;
+    QString m_staticIp;
+    QString m_declaredStatus;
     QString m_configPath;
     bool m_pcControlEnabled;
     QString m_pcMacAddress;

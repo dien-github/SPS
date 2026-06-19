@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SPS Dashboard</title>
+  <title>SPS Operations Dashboard</title>
   <style>
     :root {
       --bg: #f3f5f8;
@@ -77,8 +77,8 @@
 
     .brand h1,
     .brand p,
-    .section h2,
-    .section p {
+    .panel h3,
+    .panel p {
       margin: 0;
     }
 
@@ -148,10 +148,17 @@
       background: rgba(37, 99, 235, 0.22);
     }
 
-    .room-nav strong,
-    .room-card strong {
+    .room-nav strong {
       display: block;
       margin-bottom: 4px;
+    }
+
+    .room-nav .room-nav-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
     }
 
     .main {
@@ -185,10 +192,15 @@
       color: var(--muted);
     }
 
-    .actions {
+    .actions,
+    .toolbar {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .actions {
       justify-content: flex-end;
     }
 
@@ -197,8 +209,8 @@
       border-radius: var(--radius);
       background: #fff;
       color: var(--text);
-      padding: 10px 12px;
-      min-height: 42px;
+      padding: 9px 12px;
+      min-height: 40px;
       font-weight: 650;
     }
 
@@ -225,21 +237,15 @@
       cursor: not-allowed;
     }
 
-    .metrics,
-    .rooms-grid,
-    .devices-grid {
-      display: grid;
-      gap: 12px;
-    }
-
     .metrics {
+      display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
       margin-bottom: 14px;
     }
 
     .metric,
     .panel,
-    .room-card,
     .device-card {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -263,15 +269,9 @@
       font-size: 25px;
     }
 
-    .main-grid {
-      display: grid;
-      grid-template-columns: 0.9fr 1.4fr;
-      gap: 14px;
-      align-items: start;
-    }
-
     .panel {
       padding: 16px;
+      margin-bottom: 14px;
     }
 
     .panel-head {
@@ -283,95 +283,61 @@
     }
 
     .panel-head h3 {
-      margin: 0;
       font-size: 18px;
     }
 
-    .rooms-grid {
-      grid-template-columns: 1fr;
+    .ops-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 0.72fr);
+      gap: 14px;
+      align-items: start;
     }
 
-    .room-card {
-      width: 100%;
-      padding: 14px;
-      text-align: left;
-      background: var(--panel);
-    }
-
-    .room-card.active {
-      border-color: var(--blue);
-      outline: 2px solid rgba(37, 99, 235, 0.12);
-    }
-
-    .room-meta {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 10px;
-    }
-
-    .tag,
-    .state {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      padding: 5px 9px;
-      font-size: 12px;
-      font-weight: 700;
-      background: #eef2f7;
-      color: #334155;
-    }
-
-    .tag.blue {
-      background: #dbeafe;
-      color: #1d4ed8;
-    }
-
-    .tag.green,
-    .state.on {
-      background: #dcfce7;
-      color: #166534;
-    }
-
-    .state.off {
-      background: #fee2e2;
-      color: #991b1b;
+    .devices-grid,
+    .package-list {
+      display: grid;
+      gap: 12px;
     }
 
     .devices-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .device-card {
-      min-height: 210px;
+      min-height: 190px;
       padding: 16px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
     }
 
+    .device-top {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
     .device-letter {
-      width: 44px;
-      height: 44px;
+      min-width: 42px;
+      height: 42px;
       border-radius: var(--radius);
       display: grid;
       place-items: center;
       background: #e0f2fe;
       color: #075985;
       font-weight: 800;
-      margin-bottom: 12px;
     }
 
     .device-name {
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 750;
       line-height: 1.3;
       margin-bottom: 6px;
     }
 
     .device-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+      display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       margin-top: 14px;
     }
@@ -379,6 +345,14 @@
     .form-grid {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 14px;
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) repeat(3, minmax(150px, 0.35fr));
       gap: 10px;
       align-items: end;
       margin-bottom: 14px;
@@ -392,7 +366,8 @@
       margin-bottom: 6px;
     }
 
-    input {
+    input,
+    select {
       width: 100%;
       min-height: 42px;
       border: 1px solid var(--line);
@@ -402,9 +377,22 @@
       color: var(--text);
     }
 
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
     table {
       width: 100%;
+      min-width: 960px;
       border-collapse: collapse;
+      background: #fff;
+    }
+
+    .compact-table {
+      min-width: 620px;
     }
 
     th,
@@ -416,12 +404,119 @@
       font-size: 14px;
     }
 
+    thead th {
+      border-top: 0;
+    }
+
     th {
       color: var(--muted);
       font-size: 12px;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       background: var(--panel-soft);
+      white-space: nowrap;
+    }
+
+    .ops-row {
+      cursor: pointer;
+    }
+
+    .ops-row.selected {
+      background: #eff6ff;
+    }
+
+    .building-row td {
+      background: #eef2f7;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .event-scroll {
+      max-height: 340px;
+      overflow: auto;
+    }
+
+    .details-row[hidden] {
+      display: none;
+    }
+
+    .details-cell {
+      background: var(--panel-soft);
+      padding: 0;
+    }
+
+    .details-cell pre {
+      margin: 0;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      color: #334155;
+    }
+
+    .status-badge,
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 750;
+      background: #eef2f7;
+      color: #334155;
+      white-space: nowrap;
+    }
+
+    .status-badge small {
+      color: inherit;
+      font-size: 10px;
+      opacity: 0.76;
+      text-transform: uppercase;
+    }
+
+    .status-badge.active,
+    .status-badge.connected,
+    .status-badge.success,
+    .status-badge.completed,
+    .status-badge.complete,
+    .status-badge.on {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status-badge.idle,
+    .status-badge.requested,
+    .status-badge.observed,
+    .tag.blue {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .status-badge.maintenance,
+    .status-badge.warning,
+    .status-badge.degraded,
+    .status-badge.pending {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-badge.offline,
+    .status-badge.failed,
+    .status-badge.failure,
+    .status-badge.error,
+    .status-badge.off {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .status-badge.unknown,
+    .status-badge.stale {
+      background: #e5e7eb;
+      color: #374151;
     }
 
     .notice {
@@ -447,14 +542,26 @@
       background: var(--panel-soft);
     }
 
-    @media (max-width: 1180px) {
-      .main-grid {
-        grid-template-columns: 1fr;
-      }
+    .package-item {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: var(--panel-soft);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
 
+    @media (max-width: 1180px) {
+      .ops-grid,
       .devices-grid,
       .metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .ops-grid {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -477,14 +584,16 @@
         display: block;
       }
 
-      .actions {
+      .actions,
+      .toolbar {
         justify-content: flex-start;
         margin-top: 12px;
       }
 
       .devices-grid,
       .metrics,
-      .form-grid {
+      .form-grid,
+      .filter-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -496,8 +605,8 @@
       <div class="brand">
         <div class="brand-mark">SPS</div>
         <div>
-          <h1>Server Dashboard</h1>
-          <p>Quản lý phòng học nội bộ</p>
+          <h1>IT Admin</h1>
+          <p>Virtual LAN classroom ops</p>
         </div>
       </div>
 
@@ -509,54 +618,144 @@
       </div>
 
       <div class="sidebar-label">Điều hướng</div>
-      <button class="page-nav active" type="button" data-page="rooms"><span>Phòng học</span><span>01</span></button>
-      <button class="page-nav" type="button" data-page="lecturers"><span>Giảng viên</span><span>02</span></button>
+      <button class="page-nav active" type="button" data-page="rooms"><span>Operations Overview</span><span>01</span></button>
+      <button class="page-nav" type="button" data-page="lecturers"><span>Lecturer / RFID</span><span>02</span></button>
       <button class="page-nav" type="button" data-page="firmware"><span>Firmware / OTA</span><span>03</span></button>
-
-      <div class="sidebar-label">Phòng học</div>
-      <div id="roomNav"></div>
     </aside>
 
     <main class="main">
       <div class="topbar">
         <div>
-          <h2 id="pageTitle">Đang tải phòng học</h2>
-          <p id="pageSubtitle">Dữ liệu lấy trực tiếp từ API chính.</p>
+          <h2 id="pageTitle">Tổng quan vận hành</h2>
+          <p id="pageSubtitle">Theo dõi PCD, runtime MQTT, RFID sync, OTA và audit sự kiện.</p>
         </div>
         <div class="actions">
           <button class="btn" id="refreshBtn" type="button">Làm mới</button>
-          <button class="btn good" id="syncBtn" type="button">Đồng bộ giảng viên</button>
         </div>
       </div>
 
       <section class="metrics" aria-label="Tổng quan hệ thống">
-        <div class="metric"><span>Tổng số phòng</span><strong id="roomCount">0</strong></div>
-        <div class="metric"><span>Thiết bị đã khai báo</span><strong id="deviceCount">0</strong></div>
-        <div class="metric"><span>Thiết bị đang bật</span><strong id="activeDeviceCount">0</strong></div>
-        <div class="metric"><span>Giảng viên</span><strong id="lecturerCount">0</strong></div>
+        <div class="metric"><span>Total PCD</span><strong id="totalPcdCount">0</strong></div>
+        <div class="metric"><span>Active PCD</span><strong id="activePcdCount">0</strong></div>
+        <div class="metric"><span>Offline/Maintenance PCD</span><strong id="offlineMaintenanceCount">0</strong></div>
+        <div class="metric"><span>Rooms needing attention</span><strong id="attentionCount">0</strong></div>
       </section>
 
       <section class="page-section active" data-page-panel="rooms">
-        <div class="main-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>PCD operations table</h3>
+              <p class="muted">Runtime state is observed from MQTT when available; seeded status is marked separately.</p>
+            </div>
+          </div>
+          <div class="filter-grid">
+            <div>
+              <label for="roomSearch">Search</label>
+              <input id="roomSearch" placeholder="room, PCD, or static IP" />
+            </div>
+            <div>
+              <label for="buildingFilter">Building</label>
+              <select id="buildingFilter">
+                <option value="">All</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+                <option value="E">E</option>
+              </select>
+            </div>
+            <div>
+              <label for="statusFilter">Status</label>
+              <select id="statusFilter">
+                <option value="">All</option>
+                <option value="Active">Active</option>
+                <option value="Idle">Idle</option>
+                <option value="Maintenance">Maintenance</option>
+                <option value="Offline">Offline</option>
+                <option value="Warning">Warning</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+            </div>
+            <div>
+              <button class="btn" id="clearRoomFiltersBtn" type="button">Clear</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Room</th>
+                  <th>PCD</th>
+                  <th>Static IP</th>
+                  <th>Declared status</th>
+                  <th>Runtime status</th>
+                  <th>Last seen</th>
+                  <th>Firmware</th>
+                  <th>RFID sync</th>
+                  <th>OTA</th>
+                  <th>Latest error</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="overviewRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="ops-grid">
           <div class="panel">
             <div class="panel-head">
               <div>
-                <h3>Danh sách phòng</h3>
-                <p class="muted">Mỗi phòng có danh sách thiết bị riêng.</p>
+                <h3>Remote intervention</h3>
+                <p class="muted" id="devicePanelMeta">Chọn một phòng để gửi lệnh điều khiển từ xa.</p>
               </div>
             </div>
-            <div class="rooms-grid" id="roomsGrid"></div>
+            <div class="devices-grid" id="devicesGrid"></div>
+            <div class="notice" id="deviceNotice"></div>
           </div>
 
           <div class="panel">
             <div class="panel-head">
               <div>
-                <h3>Thiết bị trong phòng</h3>
-                <p class="muted" id="devicePanelMeta">Chọn một phòng để xem thiết bị A, B, C.</p>
+                <h3>Operations / audit events</h3>
+                <p class="muted">Dữ liệu thật từ bảng events, bao gồm MQTT và audit admin actions.</p>
               </div>
             </div>
-            <div class="devices-grid" id="devicesGrid"></div>
-            <div class="notice" id="deviceNotice"></div>
+            <div class="filter-grid" style="grid-template-columns:1fr 1fr 1fr">
+              <div>
+                <label for="eventRoomFilter">Room</label>
+                <select id="eventRoomFilter"></select>
+              </div>
+              <div>
+                <label for="eventTypeFilter">Category/type</label>
+                <select id="eventTypeFilter">
+                  <option value="">All</option>
+                  <option value="category:audit">audit</option>
+                  <option value="category:status">status</option>
+                  <option value="category:event">event</option>
+                  <option value="audit:device_control">audit / device_control</option>
+                  <option value="audit:lecturer_sync">audit / lecturer_sync</option>
+                  <option value="audit:ota_request">audit / ota_request</option>
+                  <option value="audit:ota_upload">audit / ota_upload</option>
+                </select>
+              </div>
+              <div>
+                <label for="eventLimitFilter">Limit</label>
+                <select id="eventLimitFilter">
+                  <option value="30">latest 30</option>
+                  <option value="100">latest 100</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap event-scroll">
+              <table class="compact-table">
+                <thead>
+                  <tr><th>Time</th><th>Room</th><th>Type</th><th>Summary</th><th></th></tr>
+                </thead>
+                <tbody id="eventRows"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -565,9 +764,10 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>Giảng viên</h3>
-              <p class="muted">Danh sách này dùng cho lệnh sync xuống PCD.</p>
+              <h3>Lecturer / RFID</h3>
+              <p class="muted">Quản lý danh sách lecturer và gửi lệnh sync xuống từng PCD.</p>
             </div>
+            <button class="btn good" id="syncAllBtn" type="button">Sync all rooms</button>
           </div>
           <form id="lecturerForm" class="form-grid">
             <div>
@@ -584,7 +784,7 @@
             </div>
             <button class="btn primary" type="submit">Lưu</button>
           </form>
-          <div style="overflow-x:auto">
+          <div class="table-wrap">
             <table>
               <thead>
                 <tr><th>ID</th><th>Tên</th><th>RFID</th><th>Trạng thái</th><th></th></tr>
@@ -594,33 +794,90 @@
           </div>
           <div class="notice" id="lecturerNotice"></div>
         </div>
-      </section>
 
-      <section class="page-section" data-page-panel="firmware">
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>OTA</h3>
-              <p class="muted">Gửi metadata OTA tới phòng đang chọn.</p>
+              <h3>Per-room RFID sync</h3>
+              <p class="muted">Không giả lập thành công; trạng thái chỉ đến từ event hoặc audit request.</p>
             </div>
           </div>
-          <form id="otaForm" class="form-grid" style="grid-template-columns:1fr 1fr 1fr auto">
-            <div>
-              <label for="otaVersion">Version</label>
-              <input id="otaVersion" placeholder="1.0.1" required />
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Room</th><th>PCD</th><th>Sync status</th><th>Last seen</th><th>Action</th></tr>
+              </thead>
+              <tbody id="syncRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section" data-page-panel="firmware">
+        <div class="ops-grid">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>OTA package list</h3>
+                <p class="muted">Các file đang được serve từ OTA_DIR qua /ota.</p>
+              </div>
             </div>
-            <div>
-              <label for="otaUrl">URL</label>
-              <input id="otaUrl" placeholder="/ota/firmware.bin" required />
+            <form id="otaUploadForm" class="form-grid" style="grid-template-columns:1fr auto">
+              <div>
+                <label for="otaFirmwareFile">Upload firmware .bin</label>
+                <input id="otaFirmwareFile" type="file" accept=".bin" required />
+              </div>
+              <button class="btn primary" type="submit">Upload</button>
+            </form>
+            <div class="notice" id="otaUploadNotice"></div>
+            <div id="otaFiles" class="package-list"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>Rollout request</h3>
+                <p class="muted">Gửi metadata OTA tới room được chọn và ghi audit request.</p>
+              </div>
             </div>
+            <form id="otaForm" class="form-grid" style="grid-template-columns:1fr 1fr">
+              <div>
+                <label for="otaRoomSelect">Target room</label>
+                <select id="otaRoomSelect" required></select>
+              </div>
+              <div>
+                <label for="otaVersion">Version</label>
+                <input id="otaVersion" placeholder="1.0.1" required />
+              </div>
+              <div>
+                <label for="otaUrl">URL</label>
+                <input id="otaUrl" placeholder="/ota/firmware.bin" required />
+              </div>
+              <div>
+                <label for="otaChecksum">Checksum</label>
+                <input id="otaChecksum" placeholder="sha256..." />
+              </div>
+              <button class="btn primary" type="submit">Request OTA</button>
+            </form>
+            <div class="notice" id="otaNotice"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
             <div>
-              <label for="otaChecksum">Checksum</label>
-              <input id="otaChecksum" placeholder="sha256..." />
+              <h3>Per-room OTA rollout</h3>
+              <p class="muted">Trạng thái và last event lấy từ MQTT/audit events, không tự tạo success.</p>
             </div>
-            <button class="btn primary" type="submit">Gửi OTA</button>
-          </form>
-          <div id="otaFiles" class="empty">Chưa có thông tin file OTA.</div>
-          <div class="notice" id="otaNotice"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Room</th><th>PCD</th><th>Firmware</th><th>OTA status</th><th>Last OTA event</th><th>Latest error</th></tr>
+              </thead>
+              <tbody id="otaRows"></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
@@ -628,64 +885,100 @@
 
   <script>
     const state = {
-      rooms: [],
       currentPage: 'rooms',
+      overviewRooms: [],
       selectedRoomId: null,
-      selectedRoom: null,
+      selectedRoomConfig: null,
       devices: [],
       lecturers: [],
-      otaFiles: []
+      otaFiles: [],
+      events: [],
+      roomFilters: {
+        search: '',
+        building: '',
+        status: ''
+      },
+      eventFilters: {
+        roomId: '',
+        category: '',
+        type: '',
+        limit: '30'
+      }
     };
 
     const els = {
       apiState: document.getElementById('apiState'),
       dbState: document.getElementById('dbState'),
       mqttState: document.getElementById('mqttState'),
-      roomNav: document.getElementById('roomNav'),
-      roomsGrid: document.getElementById('roomsGrid'),
-      devicesGrid: document.getElementById('devicesGrid'),
       pageTitle: document.getElementById('pageTitle'),
       pageSubtitle: document.getElementById('pageSubtitle'),
+      totalPcdCount: document.getElementById('totalPcdCount'),
+      activePcdCount: document.getElementById('activePcdCount'),
+      offlineMaintenanceCount: document.getElementById('offlineMaintenanceCount'),
+      attentionCount: document.getElementById('attentionCount'),
+      overviewRows: document.getElementById('overviewRows'),
+      roomSearch: document.getElementById('roomSearch'),
+      buildingFilter: document.getElementById('buildingFilter'),
+      statusFilter: document.getElementById('statusFilter'),
       devicePanelMeta: document.getElementById('devicePanelMeta'),
-      roomCount: document.getElementById('roomCount'),
-      deviceCount: document.getElementById('deviceCount'),
-      activeDeviceCount: document.getElementById('activeDeviceCount'),
-      lecturerCount: document.getElementById('lecturerCount'),
-      lecturerRows: document.getElementById('lecturerRows'),
+      devicesGrid: document.getElementById('devicesGrid'),
       deviceNotice: document.getElementById('deviceNotice'),
+      eventRoomFilter: document.getElementById('eventRoomFilter'),
+      eventTypeFilter: document.getElementById('eventTypeFilter'),
+      eventLimitFilter: document.getElementById('eventLimitFilter'),
+      eventRows: document.getElementById('eventRows'),
+      lecturerRows: document.getElementById('lecturerRows'),
       lecturerNotice: document.getElementById('lecturerNotice'),
+      syncRows: document.getElementById('syncRows'),
       otaFiles: document.getElementById('otaFiles'),
+      otaFirmwareFile: document.getElementById('otaFirmwareFile'),
+      otaUploadNotice: document.getElementById('otaUploadNotice'),
+      otaRoomSelect: document.getElementById('otaRoomSelect'),
+      otaRows: document.getElementById('otaRows'),
       otaNotice: document.getElementById('otaNotice')
     };
 
     const pageMeta = {
       rooms: {
-        title: 'Phòng học',
-        subtitle: 'Quản lý phòng và điều khiển thiết bị A, B, C trong từng phòng.'
+        title: 'Tổng quan vận hành',
+        subtitle: 'Theo dõi PCD, runtime MQTT, RFID sync, OTA và audit sự kiện.'
       },
       lecturers: {
-        title: 'Giảng viên',
-        subtitle: 'Quản lý danh sách giảng viên và RFID để đồng bộ xuống PCD.'
+        title: 'Lecturer / RFID',
+        subtitle: 'Quản lý lecturer database và điều phối sync xuống PCD.'
       },
       firmware: {
         title: 'Firmware / OTA',
-        subtitle: 'Xem gói OTA trên server và gửi metadata cập nhật tới phòng đang chọn.'
+        subtitle: 'Rollout package theo room, xem trạng thái OTA và event gần nhất.'
       }
     };
 
     async function requestJson(path, options = {}) {
+      const isFormData = options.body instanceof FormData;
       const response = await fetch(path, {
         ...options,
         headers: {
-          'Content-Type': 'application/json',
+          ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
           ...(options.headers || {})
         }
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error || data.message || `HTTP ${response.status}`);
+        const error = new Error(data.error || data.message || `HTTP ${response.status}`);
+        error.data = data;
+        throw error;
       }
       return data;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[char]));
     }
 
     function setNotice(element, message, type = '') {
@@ -693,17 +986,118 @@
       element.className = `notice ${type}`.trim();
     }
 
+    function statusClass(status) {
+      return String(status || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'unknown';
+    }
+
+    function statusBadge(status, detail = '') {
+      const label = status || 'Unknown';
+      const detailHtml = detail ? `<small>${escapeHtml(detail)}</small>` : '';
+      return `<span class="status-badge ${statusClass(label)}">${escapeHtml(label)}${detailHtml}</span>`;
+    }
+
+    function display(value, fallback = '-') {
+      if (value === null || value === undefined || value === '') return fallback;
+      return escapeHtml(value);
+    }
+
+    function formatDate(value) {
+      if (!value) return '-';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return escapeHtml(value);
+      return date.toLocaleString('vi-VN', { hour12: false });
+    }
+
+    function formatBytes(value) {
+      const bytes = Number(value || 0);
+      if (!bytes) return '0 B';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    }
+
     function roomLabel(room) {
-      return `${room.name} (${room.id})`;
+      return room?.room_code || room?.id || '-';
+    }
+
+    function roomById(roomId) {
+      return state.overviewRooms.find((room) => room.id === roomId);
+    }
+
+    function selectedOverviewRoom() {
+      return roomById(state.selectedRoomId);
+    }
+
+    function roomAttentionStatus(room) {
+      if (room.latest_error) return 'Warning';
+      if (room.runtime_confidence === 'stale') return 'Warning';
+      return room.derived_runtime_status || room.declared_status || 'Unknown';
+    }
+
+    function buildingPrefix(room) {
+      return String(room?.room_code || room?.id || '').slice(0, 1).toUpperCase();
+    }
+
+    function needsAttention(room) {
+      const status = roomAttentionStatus(room);
+      return ['Offline', 'Maintenance', 'Warning', 'Unknown'].includes(status)
+        || Boolean(room.latest_error)
+        || ['unknown', 'stale'].includes(room.runtime_confidence);
+    }
+
+    function filteredOverviewRooms() {
+      const search = state.roomFilters.search.trim().toLowerCase();
+      return state.overviewRooms.filter((room) => {
+        const haystack = [
+          room.room_code,
+          room.pcd_code,
+          room.static_ip
+        ].join(' ').toLowerCase();
+        const matchesSearch = !search || haystack.includes(search);
+        const matchesBuilding = !state.roomFilters.building || buildingPrefix(room) === state.roomFilters.building;
+        const statuses = new Set([room.declared_status, room.derived_runtime_status, roomAttentionStatus(room)]);
+        const matchesStatus = !state.roomFilters.status || statuses.has(state.roomFilters.status);
+        return matchesSearch && matchesBuilding && matchesStatus;
+      });
+    }
+
+    function eventTypeText(event) {
+      return `${event.category}/${event.type}`;
+    }
+
+    function eventSummary(event) {
+      const payload = event.payload || {};
+      const summary = payload.error
+        || payload.message
+        || payload.reason
+        || payload.status
+        || payload.action
+        || payload.file
+        || payload.url
+        || event.topic
+        || event.type;
+      const text = String(summary || event.topic || '');
+      return text.length > 110 ? `${text.slice(0, 107)}...` : text;
+    }
+
+    function eventDetails(event) {
+      return JSON.stringify(event.payload || {}, null, 2);
+    }
+
+    function isOtaEvent(event) {
+      return /ota/i.test(`${event.category}/${event.type}/${event.topic}`);
+    }
+
+    function latestEventForRoom(roomId, predicate) {
+      return state.events.find((event) => event.room_id === roomId && predicate(event));
+    }
+
+    function inferVersion(fileName) {
+      const match = String(fileName || '').match(/(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.]+)?)/);
+      return match ? match[1] : '';
     }
 
     function renderPageHeader() {
-      if (state.currentPage === 'rooms' && state.selectedRoom) {
-        els.pageTitle.textContent = roomLabel(state.selectedRoom);
-        els.pageSubtitle.textContent = state.selectedRoom.location || pageMeta.rooms.subtitle;
-        return;
-      }
-
       const meta = pageMeta[state.currentPage] || pageMeta.rooms;
       els.pageTitle.textContent = meta.title;
       els.pageSubtitle.textContent = meta.subtitle;
@@ -717,7 +1111,6 @@
       document.querySelectorAll('[data-page-panel]').forEach((panel) => {
         panel.classList.toggle('active', panel.dataset.pagePanel === page);
       });
-      document.getElementById('syncBtn').style.display = page === 'rooms' ? '' : 'none';
       renderPageHeader();
     }
 
@@ -728,77 +1121,148 @@
     }
 
     function renderMetrics() {
-      const totalDevices = state.rooms.reduce((sum, room) => sum + Number(room.device_count || 0), 0);
-      const activeDevices = state.rooms.reduce((sum, room) => sum + Number(room.active_device_count || 0), 0);
-      els.roomCount.textContent = state.rooms.length;
-      els.deviceCount.textContent = totalDevices;
-      els.activeDeviceCount.textContent = activeDevices;
-      els.lecturerCount.textContent = state.lecturers.length;
+      const active = state.overviewRooms.filter((room) => room.derived_runtime_status === 'Active').length;
+      const offlineMaintenance = state.overviewRooms.filter((room) => (
+        ['Offline', 'Maintenance'].includes(room.declared_status)
+      )).length;
+      const attention = state.overviewRooms.filter(needsAttention).length;
+
+      els.totalPcdCount.textContent = state.overviewRooms.length;
+      els.activePcdCount.textContent = active;
+      els.offlineMaintenanceCount.textContent = offlineMaintenance;
+      els.attentionCount.textContent = attention;
     }
 
-    function renderRooms() {
-      if (!state.rooms.length) {
-        els.roomsGrid.innerHTML = '<div class="empty">Chưa có phòng nào trong database.</div>';
-        els.roomNav.innerHTML = '<div class="empty">Chưa có phòng.</div>';
+    function renderOverviewTable() {
+      const rooms = filteredOverviewRooms();
+      if (!rooms.length) {
+        els.overviewRows.innerHTML = '<tr><td colspan="11" class="muted">Không có PCD phù hợp bộ lọc.</td></tr>';
         return;
       }
 
-      const roomButton = (room, className) => `
-        <button class="${className} ${room.id === state.selectedRoomId ? 'active' : ''}" type="button" data-room-id="${room.id}">
-          <strong>${roomLabel(room)}</strong>
-          <span class="muted">${room.location || 'Chưa có vị trí'}</span>
-          <div class="room-meta">
-            <span class="tag blue">${room.device_count || 0} thiết bị</span>
-            <span class="tag green">${room.active_device_count || 0} đang bật</span>
-          </div>
-        </button>`;
+      let currentBuilding = '';
+      els.overviewRows.innerHTML = rooms.map((room) => {
+        const building = buildingPrefix(room) || 'Other';
+        const group = building !== currentBuilding
+          ? `<tr class="building-row"><td colspan="11">Building ${escapeHtml(building)}</td></tr>`
+          : '';
+        currentBuilding = building;
+        return `${group}
+          <tr class="ops-row ${room.id === state.selectedRoomId ? 'selected' : ''}" data-select-room="${escapeHtml(room.id)}">
+            <td><strong>${escapeHtml(roomLabel(room))}</strong></td>
+            <td>${display(room.pcd_code)}</td>
+            <td>${display(room.static_ip)}</td>
+            <td>${statusBadge(room.declared_status)}</td>
+            <td>${statusBadge(room.derived_runtime_status, room.runtime_confidence)}</td>
+            <td>${formatDate(room.last_seen_at)}</td>
+            <td>${display(room.firmware_version)}</td>
+            <td>${room.lecturer_sync_status ? statusBadge(room.lecturer_sync_status) : '-'}</td>
+            <td>${room.ota_status ? statusBadge(room.ota_status) : '-'}</td>
+            <td>${room.latest_error ? `<span class="status-badge warning">${escapeHtml(room.latest_error)}</span>` : '-'}</td>
+            <td><button class="btn" type="button">Remote</button></td>
+          </tr>`;
+      }).join('');
 
-      els.roomsGrid.innerHTML = state.rooms.map((room) => roomButton(room, 'room-card')).join('');
-      els.roomNav.innerHTML = state.rooms.map((room) => roomButton(room, 'room-nav')).join('');
-
-      document.querySelectorAll('[data-room-id]').forEach((button) => {
-        button.addEventListener('click', () => selectRoom(button.dataset.roomId));
+      els.overviewRows.querySelectorAll('.ops-row[data-select-room]').forEach((row) => {
+        row.addEventListener('click', () => selectRoom(row.dataset.selectRoom));
       });
     }
 
-    function renderSelectedRoom() {
-      if (!state.selectedRoom) {
-        els.devicePanelMeta.textContent = 'Chọn một phòng để xem thiết bị A, B, C.';
-        renderPageHeader();
+    function renderDevices() {
+      const room = selectedOverviewRoom() || state.selectedRoomConfig;
+      if (!room) {
+        els.devicePanelMeta.textContent = 'Chọn một phòng để gửi lệnh điều khiển từ xa.';
+        els.devicesGrid.innerHTML = '<div class="empty">Chưa chọn phòng.</div>';
         return;
       }
 
-      els.devicePanelMeta.textContent = `${state.devices.length} thiết bị đang gắn với ${state.selectedRoom.name}.`;
-      renderPageHeader();
-    }
+      els.devicePanelMeta.textContent = `${roomLabel(room)} / ${room.pcd_code || 'PCD'} - command được ghi audit, trạng thái vật lý chờ MQTT xác nhận.`;
 
-    function renderDevices() {
       if (!state.devices.length) {
-        els.devicesGrid.innerHTML = '<div class="empty">Phòng này chưa có thiết bị.</div>';
+        els.devicesGrid.innerHTML = '<div class="empty">Phòng này chưa khai báo thiết bị.</div>';
         return;
       }
 
       els.devicesGrid.innerHTML = state.devices.map((device) => {
-        const label = device.metadata?.label || device.id.split('-').pop().toUpperCase();
-        const isOn = device.state === 'on';
+        const isPc = device.type === 'pc' || device.protocol === 'wol';
+        const stateLabel = device.state === 'on'
+          ? 'Confirmed on'
+          : device.state === 'off'
+            ? 'Confirmed off'
+            : 'No confirmed status';
+        const actions = isPc
+          ? `<button class="btn primary" type="button" data-device-id="${escapeHtml(device.id)}" data-state="on">Wake request</button>`
+          : `
+            <button class="btn good" type="button" data-device-id="${escapeHtml(device.id)}" data-state="on">Request on</button>
+            <button class="btn danger" type="button" data-device-id="${escapeHtml(device.id)}" data-state="off">Request off</button>
+          `;
+
         return `
           <article class="device-card">
-            <div>
-              <div class="device-letter">${label}</div>
-              <div class="device-name">${device.name}</div>
-              <div class="muted">ID: ${device.id}</div>
-              <div class="muted">Loại: ${device.type}</div>
-              <div style="margin-top:10px"><span class="state ${isOn ? 'on' : 'off'}">${isOn ? 'Đang bật' : 'Đang tắt'}</span></div>
+            <div class="device-top">
+              <div class="device-letter">${display(device.metadata?.label || device.type)}</div>
+              <div>
+                <div class="device-name">${escapeHtml(device.name)}</div>
+                <div class="muted">ID: ${escapeHtml(device.id)}</div>
+                <div class="muted">Type: ${escapeHtml(device.type)} / ${escapeHtml(device.protocol || 'unknown')}</div>
+                <div style="margin-top:10px">${statusBadge(stateLabel, device.state || 'unknown')}</div>
+              </div>
             </div>
-            <div class="device-actions">
-              <button class="btn good" type="button" data-device-id="${device.id}" data-state="on">Bật</button>
-              <button class="btn danger" type="button" data-device-id="${device.id}" data-state="off">Tắt</button>
-            </div>
-          </article>`;
+            <div class="device-actions">${actions}</div>
+          </article>
+        `;
       }).join('');
 
-      document.querySelectorAll('[data-device-id]').forEach((button) => {
+      els.devicesGrid.querySelectorAll('[data-device-id]').forEach((button) => {
         button.addEventListener('click', () => controlDevice(button.dataset.deviceId, button.dataset.state));
+      });
+    }
+
+    function renderEventFilters() {
+      const ids = new Set(state.overviewRooms.map((room) => room.id));
+      state.events.forEach((event) => ids.add(event.room_id));
+      if (state.eventFilters.roomId) ids.add(state.eventFilters.roomId);
+      const current = state.eventFilters.roomId;
+      const options = ['<option value="">All rooms</option>'].concat(Array.from(ids).filter(Boolean).sort().map((id) => {
+        const room = roomById(id);
+        const label = room ? `${roomLabel(room)} - ${room.pcd_code || id}` : id;
+        return `<option value="${escapeHtml(id)}" ${id === current ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+      }));
+      els.eventRoomFilter.innerHTML = options.join('');
+      els.eventTypeFilter.value = state.eventFilters.type
+        ? `${state.eventFilters.category}:${state.eventFilters.type}`
+        : (state.eventFilters.category ? `category:${state.eventFilters.category}` : '');
+      els.eventLimitFilter.value = state.eventFilters.limit;
+    }
+
+    function renderEvents() {
+      renderEventFilters();
+      if (!state.events.length) {
+        els.eventRows.innerHTML = '<tr><td colspan="5" class="muted">Chưa có event thật phù hợp bộ lọc.</td></tr>';
+        return;
+      }
+
+      els.eventRows.innerHTML = state.events.map((event, index) => {
+        const room = roomById(event.room_id);
+        return `
+          <tr>
+            <td>${formatDate(event.created_at)}</td>
+            <td>${escapeHtml(room ? roomLabel(room) : event.room_id)}</td>
+            <td>${escapeHtml(eventTypeText(event))}</td>
+            <td>${escapeHtml(eventSummary(event))}</td>
+            <td><button class="btn" type="button" data-event-details="${index}">details</button></td>
+          </tr>
+          <tr class="details-row" data-event-details-row="${index}" hidden>
+            <td class="details-cell" colspan="5"><pre>${escapeHtml(eventDetails(event))}</pre></td>
+          </tr>
+        `;
+      }).join('');
+
+      els.eventRows.querySelectorAll('[data-event-details]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const row = els.eventRows.querySelector(`[data-event-details-row="${button.dataset.eventDetails}"]`);
+          if (row) row.hidden = !row.hidden;
+        });
       });
     }
 
@@ -810,27 +1274,99 @@
 
       els.lecturerRows.innerHTML = state.lecturers.map((lecturer) => `
         <tr>
-          <td>${lecturer.id}</td>
-          <td>${lecturer.name}</td>
-          <td><span class="tag">${lecturer.rfid}</span></td>
+          <td>${escapeHtml(lecturer.id)}</td>
+          <td>${escapeHtml(lecturer.name)}</td>
+          <td><span class="tag">${escapeHtml(lecturer.rfid)}</span></td>
           <td>${lecturer.authorized ? 'Được phép' : 'Khóa'}</td>
-          <td><button class="btn danger" type="button" data-delete-lecturer="${lecturer.id}">Xóa</button></td>
-        </tr>`).join('');
+          <td><button class="btn danger" type="button" data-delete-lecturer="${escapeHtml(lecturer.id)}">Xóa</button></td>
+        </tr>
+      `).join('');
 
-      document.querySelectorAll('[data-delete-lecturer]').forEach((button) => {
+      els.lecturerRows.querySelectorAll('[data-delete-lecturer]').forEach((button) => {
         button.addEventListener('click', () => deleteLecturer(button.dataset.deleteLecturer));
+      });
+    }
+
+    function renderSyncRows() {
+      if (!state.overviewRooms.length) {
+        els.syncRows.innerHTML = '<tr><td colspan="5" class="muted">Chưa có PCD.</td></tr>';
+        return;
+      }
+
+      els.syncRows.innerHTML = state.overviewRooms.map((room) => `
+        <tr>
+          <td><strong>${escapeHtml(roomLabel(room))}</strong></td>
+          <td>${display(room.pcd_code)}</td>
+          <td>${room.lecturer_sync_status ? statusBadge(room.lecturer_sync_status) : '-'}</td>
+          <td>${formatDate(room.last_seen_at)}</td>
+          <td><button class="btn" type="button" data-sync-room="${escapeHtml(room.id)}">Sync room</button></td>
+        </tr>
+      `).join('');
+
+      els.syncRows.querySelectorAll('[data-sync-room]').forEach((button) => {
+        button.addEventListener('click', () => syncRoom(button.dataset.syncRoom));
       });
     }
 
     function renderOta() {
       if (!state.otaFiles.length) {
-        els.otaFiles.textContent = 'Thư mục OTA hiện chưa có file.';
-        return;
+        els.otaFiles.innerHTML = '<div class="empty">Thư mục OTA hiện chưa có file.</div>';
+      } else {
+        els.otaFiles.innerHTML = state.otaFiles.map((file) => {
+          const version = inferVersion(file.file);
+          return `
+            <div class="package-item">
+              <div>
+                <strong>${escapeHtml(file.file)}</strong>
+                <div class="muted">${escapeHtml(file.url)} · ${formatBytes(file.size)} · ${formatDate(file.uploaded_at)}</div>
+              </div>
+              <button class="btn" type="button" data-use-package-url="${escapeHtml(file.url)}" data-use-package-version="${escapeHtml(version)}">Use</button>
+            </div>
+          `;
+        }).join('');
       }
 
-      els.otaFiles.innerHTML = state.otaFiles.map((file) => (
-        `<div><strong>${file.file}</strong><div class="muted">${file.url}</div></div>`
-      )).join('');
+      els.otaRoomSelect.innerHTML = state.overviewRooms.map((room) => `
+        <option value="${escapeHtml(room.id)}" ${room.id === state.selectedRoomId ? 'selected' : ''}>
+          ${escapeHtml(roomLabel(room))} - ${escapeHtml(room.pcd_code || '')}
+        </option>
+      `).join('');
+
+      els.otaRows.innerHTML = state.overviewRooms.length
+        ? state.overviewRooms.map((room) => {
+          const lastOta = latestEventForRoom(room.id, isOtaEvent);
+          return `
+            <tr>
+              <td><strong>${escapeHtml(roomLabel(room))}</strong></td>
+              <td>${display(room.pcd_code)}</td>
+              <td>${display(room.firmware_version)}</td>
+              <td>${room.ota_status ? statusBadge(room.ota_status) : '-'}</td>
+              <td>${lastOta ? `${formatDate(lastOta.created_at)} - ${escapeHtml(eventSummary(lastOta))}` : '-'}</td>
+              <td>${room.latest_error ? `<span class="status-badge warning">${escapeHtml(room.latest_error)}</span>` : '-'}</td>
+            </tr>
+          `;
+        }).join('')
+        : '<tr><td colspan="6" class="muted">Chưa có PCD.</td></tr>';
+
+      els.otaFiles.querySelectorAll('[data-use-package-url]').forEach((button) => {
+        button.addEventListener('click', () => {
+          document.getElementById('otaUrl').value = button.dataset.usePackageUrl;
+          if (button.dataset.usePackageVersion) {
+            document.getElementById('otaVersion').value = button.dataset.usePackageVersion;
+          }
+        });
+      });
+    }
+
+    function renderAll() {
+      renderPageHeader();
+      renderMetrics();
+      renderOverviewTable();
+      renderDevices();
+      renderEvents();
+      renderLecturers();
+      renderSyncRows();
+      renderOta();
     }
 
     async function loadHealth() {
@@ -843,63 +1379,73 @@
       }
     }
 
-    async function loadRooms() {
-      const data = await requestJson('/api/rooms');
-      state.rooms = data.rooms || [];
-      if (!state.selectedRoomId && state.rooms.length) {
-        state.selectedRoomId = state.rooms[0].id;
+    async function loadOverview() {
+      const data = await requestJson('/api/overview');
+      state.overviewRooms = data.rooms || [];
+      if (!state.selectedRoomId || !roomById(state.selectedRoomId)) {
+        state.selectedRoomId = state.overviewRooms[0]?.id || null;
       }
-      renderRooms();
-      renderMetrics();
     }
 
     async function loadSelectedRoom() {
       if (!state.selectedRoomId) {
-        state.selectedRoom = null;
+        state.selectedRoomConfig = null;
         state.devices = [];
-        renderSelectedRoom();
-        renderDevices();
         return;
       }
 
       const data = await requestJson(`/api/rooms/${encodeURIComponent(state.selectedRoomId)}/config`);
-      state.selectedRoom = data.room;
+      state.selectedRoomConfig = data.room;
       state.devices = data.devices || [];
-      renderSelectedRoom();
-      renderDevices();
     }
 
     async function loadLecturers() {
       const data = await requestJson('/api/lecturers');
       state.lecturers = data.lecturers || [];
-      renderLecturers();
-      renderMetrics();
     }
 
     async function loadOta() {
       const data = await requestJson('/api/ota');
       state.otaFiles = data.files || [];
-      renderOta();
+    }
+
+    function eventQueryString() {
+      const params = new URLSearchParams();
+      if (state.eventFilters.roomId) params.set('roomId', state.eventFilters.roomId);
+      if (state.eventFilters.category) params.set('category', state.eventFilters.category);
+      if (state.eventFilters.type) params.set('type', state.eventFilters.type);
+      params.set('limit', state.eventFilters.limit || '30');
+      return params.toString();
+    }
+
+    async function loadEvents() {
+      const data = await requestJson(`/api/events?${eventQueryString()}`);
+      state.events = data.events || [];
     }
 
     async function refreshAll() {
       setNotice(els.deviceNotice, '');
-      await Promise.all([loadHealth(), loadRooms(), loadLecturers(), loadOta()]);
+      await Promise.all([loadHealth(), loadOverview(), loadLecturers(), loadOta(), loadEvents()]);
       await loadSelectedRoom();
-      renderRooms();
-      renderMetrics();
+      renderAll();
+    }
+
+    async function refreshOpsData() {
+      await Promise.all([loadOverview(), loadEvents(), loadHealth()]);
+      await loadSelectedRoom();
+      renderAll();
     }
 
     async function selectRoom(roomId) {
       state.selectedRoomId = roomId;
       showPage('rooms');
-      renderRooms();
       await loadSelectedRoom();
+      renderAll();
     }
 
     async function controlDevice(deviceId, nextState) {
       if (!state.selectedRoomId) return;
-      setNotice(els.deviceNotice, 'Đang gửi lệnh...');
+      setNotice(els.deviceNotice, 'Đang gửi remote intervention command...');
       try {
         const data = await requestJson(`/api/rooms/${encodeURIComponent(state.selectedRoomId)}/devices/${encodeURIComponent(deviceId)}/control`, {
           method: 'POST',
@@ -907,14 +1453,15 @@
         });
         setNotice(
           els.deviceNotice,
-          data.published ? 'Đã cập nhật DB và publish MQTT command.' : 'Đã cập nhật DB, MQTT hiện chưa kết nối.',
+          data.published
+            ? 'Command requested. Waiting for a real MQTT status event to confirm physical state.'
+            : 'Audit recorded, but MQTT is not connected so PCD did not receive the command.',
           data.published ? 'ok' : ''
         );
-        await Promise.all([loadRooms(), loadSelectedRoom(), loadHealth()]);
-        renderRooms();
-        renderMetrics();
       } catch (error) {
         setNotice(els.deviceNotice, error.message, 'error');
+      } finally {
+        await refreshOpsData().catch(() => {});
       }
     }
 
@@ -924,8 +1471,107 @@
         await requestJson(`/api/lecturers/${encodeURIComponent(id)}`, { method: 'DELETE' });
         setNotice(els.lecturerNotice, 'Đã xóa giảng viên.', 'ok');
         await loadLecturers();
+        renderLecturers();
       } catch (error) {
         setNotice(els.lecturerNotice, error.message, 'error');
+      }
+    }
+
+    async function syncRoom(roomId) {
+      setNotice(els.lecturerNotice, `Đang request RFID sync cho ${roomId}...`);
+      try {
+        const data = await requestJson(`/api/rooms/${encodeURIComponent(roomId)}/sync`, { method: 'POST' });
+        setNotice(
+          els.lecturerNotice,
+          data.published ? `Đã publish sync request (${data.total_count} lecturer).` : 'Đã ghi audit, MQTT hiện chưa kết nối.',
+          data.published ? 'ok' : ''
+        );
+      } catch (error) {
+        setNotice(els.lecturerNotice, error.message, 'error');
+      } finally {
+        await refreshOpsData().catch(() => {});
+      }
+    }
+
+    async function syncAllRooms() {
+      setNotice(els.lecturerNotice, 'Đang request RFID sync cho tất cả rooms...');
+      try {
+        const data = await requestJson('/api/rooms/sync', { method: 'POST' });
+        setNotice(
+          els.lecturerNotice,
+          `Đã publish ${data.published}/${data.total_rooms} room sync request (${data.total_count} lecturer).`,
+          data.published ? 'ok' : ''
+        );
+      } catch (error) {
+        setNotice(els.lecturerNotice, error.message, 'error');
+      } finally {
+        await refreshOpsData().catch(() => {});
+      }
+    }
+
+    async function uploadFirmware() {
+      const file = els.otaFirmwareFile.files[0];
+      if (!file) {
+        setNotice(els.otaUploadNotice, 'Chọn file .bin trước khi upload.', 'error');
+        return;
+      }
+      if (!file.name.toLowerCase().endsWith('.bin')) {
+        setNotice(els.otaUploadNotice, 'Chỉ cho phép firmware .bin.', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('firmware', file);
+      setNotice(els.otaUploadNotice, 'Đang upload firmware...');
+
+      try {
+        const data = await requestJson('/api/ota/upload', {
+          method: 'POST',
+          body: formData
+        });
+        setNotice(els.otaUploadNotice, `Uploaded ${data.file} (${formatBytes(data.size)}).`, 'ok');
+        document.getElementById('otaUrl').value = data.url;
+        const version = inferVersion(data.file);
+        if (version) {
+          document.getElementById('otaVersion').value = version;
+        }
+        els.otaFirmwareFile.value = '';
+        await Promise.all([loadOta(), loadEvents()]);
+        renderEvents();
+        renderOta();
+      } catch (error) {
+        setNotice(els.otaUploadNotice, error.message, 'error');
+      }
+    }
+
+    async function requestOta() {
+      const roomId = els.otaRoomSelect.value;
+      if (!roomId) {
+        setNotice(els.otaNotice, 'Chọn target room trước khi request OTA.', 'error');
+        return;
+      }
+
+      const payload = {
+        version: document.getElementById('otaVersion').value.trim(),
+        url: document.getElementById('otaUrl').value.trim(),
+        checksum: document.getElementById('otaChecksum').value.trim()
+      };
+
+      setNotice(els.otaNotice, 'Đang request OTA rollout...');
+      try {
+        const data = await requestJson(`/api/rooms/${encodeURIComponent(roomId)}/ota`, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        setNotice(
+          els.otaNotice,
+          data.published ? 'OTA request published. Waiting for real OTA events.' : 'Audit recorded, MQTT hiện chưa kết nối.',
+          data.published ? 'ok' : ''
+        );
+      } catch (error) {
+        setNotice(els.otaNotice, error.message, 'error');
+      } finally {
+        await refreshOpsData().catch(() => {});
       }
     }
 
@@ -937,20 +1583,56 @@
       button.addEventListener('click', () => showPage(button.dataset.page));
     });
 
-    document.getElementById('syncBtn').addEventListener('click', async () => {
-      if (!state.selectedRoomId) return;
-      setNotice(els.deviceNotice, 'Đang publish sync command...');
-      try {
-        const data = await requestJson(`/api/rooms/${encodeURIComponent(state.selectedRoomId)}/sync`, { method: 'POST' });
-        setNotice(
-          els.deviceNotice,
-          data.published ? `Đã publish ${data.total_count} giảng viên.` : 'MQTT hiện chưa kết nối.',
-          data.published ? 'ok' : ''
-        );
-        await loadHealth();
-      } catch (error) {
-        setNotice(els.deviceNotice, error.message, 'error');
+    els.roomSearch.addEventListener('input', () => {
+      state.roomFilters.search = els.roomSearch.value;
+      renderOverviewTable();
+    });
+
+    els.buildingFilter.addEventListener('change', () => {
+      state.roomFilters.building = els.buildingFilter.value;
+      renderOverviewTable();
+    });
+
+    els.statusFilter.addEventListener('change', () => {
+      state.roomFilters.status = els.statusFilter.value;
+      renderOverviewTable();
+    });
+
+    document.getElementById('clearRoomFiltersBtn').addEventListener('click', () => {
+      state.roomFilters = { search: '', building: '', status: '' };
+      els.roomSearch.value = '';
+      els.buildingFilter.value = '';
+      els.statusFilter.value = '';
+      renderOverviewTable();
+    });
+
+    async function applyEventFilters() {
+      state.eventFilters.roomId = els.eventRoomFilter.value;
+      state.eventFilters.limit = els.eventLimitFilter.value;
+      const filter = els.eventTypeFilter.value;
+      state.eventFilters.category = '';
+      state.eventFilters.type = '';
+      if (filter.startsWith('category:')) {
+        state.eventFilters.category = filter.slice('category:'.length);
+      } else if (filter.includes(':')) {
+        const [category, type] = filter.split(':');
+        state.eventFilters.category = category;
+        state.eventFilters.type = type;
       }
+      await loadEvents();
+      renderEvents();
+    }
+
+    els.eventRoomFilter.addEventListener('change', () => {
+      applyEventFilters().catch((error) => setNotice(els.deviceNotice, error.message, 'error'));
+    });
+
+    els.eventTypeFilter.addEventListener('change', () => {
+      applyEventFilters().catch((error) => setNotice(els.deviceNotice, error.message, 'error'));
+    });
+
+    els.eventLimitFilter.addEventListener('change', () => {
+      applyEventFilters().catch((error) => setNotice(els.deviceNotice, error.message, 'error'));
     });
 
     document.getElementById('lecturerForm').addEventListener('submit', async (event) => {
@@ -970,35 +1652,24 @@
         event.target.reset();
         setNotice(els.lecturerNotice, 'Đã lưu giảng viên.', 'ok');
         await loadLecturers();
+        renderLecturers();
       } catch (error) {
         setNotice(els.lecturerNotice, error.message, 'error');
       }
     });
 
+    document.getElementById('syncAllBtn').addEventListener('click', () => {
+      syncAllRooms();
+    });
+
+    document.getElementById('otaUploadForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await uploadFirmware();
+    });
+
     document.getElementById('otaForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!state.selectedRoomId) return;
-
-      const payload = {
-        version: document.getElementById('otaVersion').value.trim(),
-        url: document.getElementById('otaUrl').value.trim(),
-        checksum: document.getElementById('otaChecksum').value.trim()
-      };
-
-      try {
-        const data = await requestJson(`/api/rooms/${encodeURIComponent(state.selectedRoomId)}/ota`, {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-        setNotice(
-          els.otaNotice,
-          data.published ? 'Đã publish OTA command.' : 'MQTT hiện chưa kết nối.',
-          data.published ? 'ok' : ''
-        );
-        await loadHealth();
-      } catch (error) {
-        setNotice(els.otaNotice, error.message, 'error');
-      }
+      await requestOta();
     });
 
     refreshAll().catch((error) => {

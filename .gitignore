@@ -2,7 +2,6 @@
 PROJECT_CONTEXT.md
 .venv/
 venv/
-docs/
 .vscode/
 **/build/
 **/.tutorial/

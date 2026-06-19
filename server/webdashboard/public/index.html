@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SPS Dashboard</title>
+  <style>
+    :root {
+      --bg: #f3f5f8;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --line: #d9e0ea;
+      --text: #142033;
+      --muted: #64748b;
+      --blue: #2563eb;
+      --green: #0f8f5f;
+      --red: #c2413a;
+      --amber: #b7791f;
+      --radius: 8px;
+      --shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      background: #111827;
+      color: #fff;
+      padding: 20px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius);
+      display: grid;
+      place-items: center;
+      background: #2563eb;
+      font-weight: 800;
+    }
+
+    .brand h1,
+    .brand p,
+    .section h2,
+    .section p {
+      margin: 0;
+    }
+
+    .brand h1 {
+      font-size: 18px;
+    }
+
+    .brand p,
+    .sidebar-label,
+    .system-line span {
+      color: rgba(255, 255, 255, 0.68);
+      font-size: 13px;
+    }
+
+    .sidebar-label {
+      margin: 22px 0 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 11px;
+    }
+
+    .system-card,
+    .page-nav,
+    .room-nav {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius);
+    }
+
+    .system-card {
+      padding: 14px;
+    }
+
+    .system-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .page-nav,
+    .room-nav {
+      width: 100%;
+      color: #fff;
+      text-align: left;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+
+    .page-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 750;
+    }
+
+    .page-nav span:last-child {
+      color: rgba(255, 255, 255, 0.58);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .page-nav.active,
+    .room-nav.active {
+      border-color: rgba(37, 99, 235, 0.85);
+      background: rgba(37, 99, 235, 0.22);
+    }
+
+    .room-nav strong,
+    .room-card strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .main {
+      padding: 22px;
+      min-width: 0;
+    }
+
+    .page-section {
+      display: none;
+    }
+
+    .page-section.active {
+      display: block;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .topbar h2 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .topbar p {
+      margin: 4px 0 0;
+      color: var(--muted);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--text);
+      padding: 10px 12px;
+      min-height: 42px;
+      font-weight: 650;
+    }
+
+    .btn.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    .btn.good {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    .btn.danger {
+      background: var(--red);
+      border-color: var(--red);
+      color: #fff;
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .metrics,
+    .rooms-grid,
+    .devices-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .metrics {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 14px;
+    }
+
+    .metric,
+    .panel,
+    .room-card,
+    .device-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .metric {
+      padding: 16px;
+    }
+
+    .metric span,
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 25px;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 0.9fr 1.4fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 16px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .panel-head h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .rooms-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .room-card {
+      width: 100%;
+      padding: 14px;
+      text-align: left;
+      background: var(--panel);
+    }
+
+    .room-card.active {
+      border-color: var(--blue);
+      outline: 2px solid rgba(37, 99, 235, 0.12);
+    }
+
+    .room-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .tag,
+    .state {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eef2f7;
+      color: #334155;
+    }
+
+    .tag.blue {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .tag.green,
+    .state.on {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .state.off {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .devices-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .device-card {
+      min-height: 210px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .device-letter {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius);
+      display: grid;
+      place-items: center;
+      background: #e0f2fe;
+      color: #075985;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .device-name {
+      font-size: 17px;
+      font-weight: 750;
+      line-height: 1.3;
+      margin-bottom: 6px;
+    }
+
+    .device-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 9px 10px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      border-top: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: middle;
+      font-size: 14px;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: var(--panel-soft);
+    }
+
+    .notice {
+      min-height: 24px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .notice.ok {
+      color: var(--green);
+    }
+
+    .notice.error {
+      color: var(--red);
+    }
+
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      color: var(--muted);
+      background: var(--panel-soft);
+    }
+
+    @media (max-width: 1180px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .devices-grid,
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: relative;
+        height: auto;
+      }
+
+      .main {
+        padding: 14px;
+      }
+
+      .topbar,
+      .panel-head {
+        display: block;
+      }
+
+      .actions {
+        justify-content: flex-start;
+        margin-top: 12px;
+      }
+
+      .devices-grid,
+      .metrics,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">SPS</div>
+        <div>
+          <h1>Server Dashboard</h1>
+          <p>Quản lý phòng học nội bộ</p>
+        </div>
+      </div>
+
+      <div class="system-card">
+        <strong>Trạng thái stack</strong>
+        <div class="system-line"><span>API</span><b id="apiState">...</b></div>
+        <div class="system-line"><span>Database</span><b id="dbState">...</b></div>
+        <div class="system-line"><span>MQTT</span><b id="mqttState">...</b></div>
+      </div>
+
+      <div class="sidebar-label">Điều hướng</div>
+      <button class="page-nav active" type="button" data-page="rooms"><span>Phòng học</span><span>01</span></button>
+      <button class="page-nav" type="button" data-page="lecturers"><span>Giảng viên</span><span>02</span></button>
+      <button class="page-nav" type="button" data-page="firmware"><span>Firmware / OTA</span><span>03</span></button>
+
+      <div class="sidebar-label">Phòng học</div>
+      <div id="roomNav"></div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h2 id="pageTitle">Đang tải phòng học</h2>
+          <p id="pageSubtitle">Dữ liệu lấy trực tiếp từ API chính.</p>
+        </div>
+        <div class="actions">
+          <button class="btn" id="refreshBtn" type="button">Làm mới</button>
+          <button class="btn good" id="syncBtn" type="button">Đồng bộ giảng viên</button>
+        </div>
+      </div>
+
+      <section class="metrics" aria-label="Tổng quan hệ thống">
+        <div class="metric"><span>Tổng số phòng</span><strong id="roomCount">0</strong></div>
+        <div class="metric"><span>Thiết bị đã khai báo</span><strong id="deviceCount">0</strong></div>
+        <div class="metric"><span>Thiết bị đang bật</span><strong id="activeDeviceCount">0</strong></div>
+        <div class="metric"><span>Giảng viên</span><strong id="lecturerCount">0</strong></div>
+      </section>
+
+      <section class="page-section active" data-page-panel="rooms">
+        <div class="main-grid">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>Danh sách phòng</h3>
+                <p class="muted">Mỗi phòng có danh sách thiết bị riêng.</p>
+              </div>
+            </div>
+            <div class="rooms-grid" id="roomsGrid"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>Thiết bị trong phòng</h3>
+                <p class="muted" id="devicePanelMeta">Chọn một phòng để xem thiết bị A, B, C.</p>
+              </div>
+            </div>
+            <div class="devices-grid" id="devicesGrid"></div>
+            <div class="notice" id="deviceNotice"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section" data-page-panel="lecturers">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Giảng viên</h3>
+              <p class="muted">Danh sách này dùng cho lệnh sync xuống PCD.</p>
+            </div>
+          </div>
+          <form id="lecturerForm" class="form-grid">
+            <div>
+              <label for="lecturerId">ID</label>
+              <input id="lecturerId" placeholder="L001" required />
+            </div>
+            <div>
+              <label for="lecturerName">Tên</label>
+              <input id="lecturerName" placeholder="Nguyễn Văn A" required />
+            </div>
+            <div>
+              <label for="lecturerRfid">RFID</label>
+              <input id="lecturerRfid" placeholder="RFID001" required />
+            </div>
+            <button class="btn primary" type="submit">Lưu</button>
+          </form>
+          <div style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr><th>ID</th><th>Tên</th><th>RFID</th><th>Trạng thái</th><th></th></tr>
+              </thead>
+              <tbody id="lecturerRows"></tbody>
+            </table>
+          </div>
+          <div class="notice" id="lecturerNotice"></div>
+        </div>
+      </section>
+
+      <section class="page-section" data-page-panel="firmware">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>OTA</h3>
+              <p class="muted">Gửi metadata OTA tới phòng đang chọn.</p>
+            </div>
+          </div>
+          <form id="otaForm" class="form-grid" style="grid-template-columns:1fr 1fr 1fr auto">
+            <div>
+              <label for="otaVersion">Version</label>
+              <input id="otaVersion" placeholder="1.0.1" required />
+            </div>
+            <div>
+              <label for="otaUrl">URL</label>
+              <input id="otaUrl" placeholder="/ota/firmware.bin" required />
+            </div>
+            <div>
+              <label for="otaChecksum">Checksum</label>
+              <input id="otaChecksum" placeholder="sha256..." />
+            </div>
+            <button class="btn primary" type="submit">Gửi OTA</button>
+          </form>
+          <div id="otaFiles" class="empty">Chưa có thông tin file OTA.</div>
+          <div class="notice" id="otaNotice"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      rooms: [],
+      currentPage: 'rooms',
+      selectedRoomId: null,
+      selectedRoom: null,
+      devices: [],
+      lecturers: [],
+      otaFiles: []
+    };
+
+    const els = {
+      apiState: document.getElementById('apiState'),
+      dbState: document.getElementById('dbState'),
+      mqttState: document.getElementById('mqttState'),
+      roomNav: document.getElementById('roomNav'),
+      roomsGrid: document.getElementById('roomsGrid'),
+      devicesGrid: document.getElementById('devicesGrid'),
+      pageTitle: document.getElementById('pageTitle'),
+      pageSubtitle: document.getElementById('pageSubtitle'),
+      devicePanelMeta: document.getElementById('devicePanelMeta'),
+      roomCount: document.getElementById('roomCount'),
+      deviceCount: document.getElementById('deviceCount'),
+      activeDeviceCount: document.getElementById('activeDeviceCount'),
+      lecturerCount: document.getElementById('lecturerCount'),
+      lecturerRows: document.getElementById('lecturerRows'),
+      deviceNotice: document.getElementById('deviceNotice'),
+      lecturerNotice: document.getElementById('lecturerNotice'),
+      otaFiles: document.getElementById('otaFiles'),
+      otaNotice: document.getElementById('otaNotice')
+    };
+
+    const pageMeta = {
+      rooms: {
+        title: 'Phòng học',
+        subtitle: 'Quản lý phòng và điều khiển thiết bị A, B, C trong từng phòng.'
+      },
+      lecturers: {
+        title: 'Giảng viên',
+        subtitle: 'Quản lý danh sách giảng viên và RFID để đồng bộ xuống PCD.'
+      },
+      firmware: {
+        title: 'Firmware / OTA',
+        subtitle: 'Xem gói OTA trên server và gửi metadata cập nhật tới phòng đang chọn.'
+      }
+    };
+
+    async function requestJson(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {})
+        }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || data.message || `HTTP ${response.status}`);
+      }
+      return data;
+    }
+
+    function setNotice(element, message, type = '') {
+      element.textContent = message || '';
+      element.className = `notice ${type}`.trim();
+    }
+
+    function roomLabel(room) {
+      return `${room.name} (${room.id})`;
+    }
+
+    function renderPageHeader() {
+      if (state.currentPage === 'rooms' && state.selectedRoom) {
+        els.pageTitle.textContent = roomLabel(state.selectedRoom);
+        els.pageSubtitle.textContent = state.selectedRoom.location || pageMeta.rooms.subtitle;
+        return;
+      }
+
+      const meta = pageMeta[state.currentPage] || pageMeta.rooms;
+      els.pageTitle.textContent = meta.title;
+      els.pageSubtitle.textContent = meta.subtitle;
+    }
+
+    function showPage(page) {
+      state.currentPage = page;
+      document.querySelectorAll('[data-page]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.page === page);
+      });
+      document.querySelectorAll('[data-page-panel]').forEach((panel) => {
+        panel.classList.toggle('active', panel.dataset.pagePanel === page);
+      });
+      document.getElementById('syncBtn').style.display = page === 'rooms' ? '' : 'none';
+      renderPageHeader();
+    }
+
+    function renderHealth(health) {
+      els.apiState.textContent = health.status === 'ok' ? 'OK' : 'Degraded';
+      els.dbState.textContent = health.database || 'unknown';
+      els.mqttState.textContent = health.mqtt?.connected ? 'Connected' : 'Disconnected';
+    }
+
+    function renderMetrics() {
+      const totalDevices = state.rooms.reduce((sum, room) => sum + Number(room.device_count || 0), 0);
+      const activeDevices = state.rooms.reduce((sum, room) => sum + Number(room.active_device_count || 0), 0);
+      els.roomCount.textContent = state.rooms.length;
+      els.deviceCount.textContent = totalDevices;
+      els.activeDeviceCount.textContent = activeDevices;
+      els.lecturerCount.textContent = state.lecturers.length;
+    }
+
+    function renderRooms() {
+      if (!state.rooms.length) {
+        els.roomsGrid.innerHTML = '<div class="empty">Chưa có phòng nào trong database.</div>';
+        els.roomNav.innerHTML = '<div class="empty">Chưa có phòng.</div>';
+        return;
+      }
+
+      const roomButton = (room, className) => `
+        <button class="${className} ${room.id === state.selectedRoomId ? 'active' : ''}" type="button" data-room-id="${room.id}">
+          <strong>${roomLabel(room)}</strong>
+          <span class="muted">${room.location || 'Chưa có vị trí'}</span>
+          <div class="room-meta">
+            <span class="tag blue">${room.device_count || 0} thiết bị</span>
+            <span class="tag green">${room.active_device_count || 0} đang bật</span>
+          </div>
+        </button>`;
+
+      els.roomsGrid.innerHTML = state.rooms.map((room) => roomButton(room, 'room-card')).join('');
+      els.roomNav.innerHTML = state.rooms.map((room) => roomButton(room, 'room-nav')).join('');
+
+      document.querySelectorAll('[data-room-id]').forEach((button) => {
+        button.addEventListener('click', () => selectRoom(button.dataset.roomId));
+      });
+    }
+
+    function renderSelectedRoom() {
+      if (!state.selectedRoom) {
+        els.devicePanelMeta.textContent = 'Chọn một phòng để xem thiết bị A, B, C.';
+        renderPageHeader();
+        return;
+      }
+
+      els.devicePanelMeta.textContent = `${state.devices.length} thiết bị đang gắn với ${state.selectedRoom.name}.`;
+      renderPageHeader();
+    }
+
+    function renderDevices() {
+      if (!state.devices.length) {
+        els.devicesGrid.innerHTML = '<div class="empty">Phòng này chưa có thiết bị.</div>';
+        return;
+      }
+
+      els.devicesGrid.innerHTML = state.devices.map((device) => {
+        const label = device.metadata?.label || device.id.split('-').pop().toUpperCase();
+        const isOn = device.state === 'on';
+        return `
+          <article class="device-card">
+            <div>
+              <div class="device-letter">${label}</div>
+              <div class="device-name">${device.name}</div>
+              <div class="muted">ID: ${device.id}</div>
+              <div class="muted">Loại: ${device.type}</div>
+              <div style="margin-top:10px"><span class="state ${isOn ? 'on' : 'off'}">${isOn ? 'Đang bật' : 'Đang tắt'}</span></div>
+            </div>
+            <div class="device-actions">
+              <button class="btn good" type="button" data-device-id="${device.id}" data-state="on">Bật</button>
+              <button class="btn danger" type="button" data-device-id="${device.id}" data-state="off">Tắt</button>
+            </div>
+          </article>`;
+      }).join('');
+
+      document.querySelectorAll('[data-device-id]').forEach((button) => {
+        button.addEventListener('click', () => controlDevice(button.dataset.deviceId, button.dataset.state));
+      });
+    }
+
+    function renderLecturers() {
+      if (!state.lecturers.length) {
+        els.lecturerRows.innerHTML = '<tr><td colspan="5" class="muted">Chưa có giảng viên.</td></tr>';
+        return;
+      }
+
+      els.lecturerRows.innerHTML = state.lecturers.map((lecturer) => `
+        <tr>
+          <td>${lecturer.id}</td>
+          <td>${lecturer.name}</td>
+          <td><span class="tag">${lecturer.rfid}</span></td>
+          <td>${lecturer.authorized ? 'Được phép' : 'Khóa'}</td>
+          <td><button class="btn danger" type="button" data-delete-lecturer="${lecturer.id}">Xóa</button></td>
+        </tr>`).join('');
+
+      document.querySelectorAll('[data-delete-lecturer]').forEach((button) => {
+        button.addEventListener('click', () => deleteLecturer(button.dataset.deleteLecturer));
+      });
+    }
+
+    function renderOta() {
+      if (!state.otaFiles.length) {
+        els.otaFiles.textContent = 'Thư mục OTA hiện chưa có file.';
+        return;
+      }
+
+      els.otaFiles.innerHTML = state.otaFiles.map((file) => (
+        `<div><strong>${file.file}</strong><div class="muted">${file.url}</div></div>`
+      )).join('');
+    }
+
+    async function loadHealth() {
+      try {
+        renderHealth(await requestJson('/health'));
+      } catch (error) {
+        els.apiState.textContent = 'Error';
+        els.dbState.textContent = 'unknown';
+        els.mqttState.textContent = 'unknown';
+      }
+    }
+
+    async function loadRooms() {
+      const data = await requestJson('/api/rooms');
+      state.rooms = data.rooms || [];
+      if (!state.selectedRoomId && state.rooms.length) {
+        state.selectedRoomId = state.rooms[0].id;
+      }
+      renderRooms();
+      renderMetrics();
+    }
+
+    async function loadSelectedRoom() {
+      if (!state.selectedRoomId) {
+        state.selectedRoom = null;
+        state.devices = [];
+        renderSelectedRoom();
+        renderDevices();
+        return;
+      }
+
+      const data = await requestJson(`/api/rooms/${encodeURIComponent(state.selectedRoomId)}/config`);
+      state.selectedRoom = data.room;
+      state.devices = data.devices || [];
+      renderSelectedRoom();
+      renderDevices();
+    }
+
+    async function loadLecturers() {
+      const data = await requestJson('/api/lecturers');
+      state.lecturers = data.lecturers || [];
+      renderLecturers();
+      renderMetrics();
+    }
+
+    async function loadOta() {
+      const data = await requestJson('/api/ota');
+      state.otaFiles = data.files || [];
+      renderOta();
+    }
+
+    async function refreshAll() {
+      setNotice(els.deviceNotice, '');
+      await Promise.all([loadHealth(), loadRooms(), loadLecturers(), loadOta()]);
+      await loadSelectedRoom();
+      renderRooms();
+      renderMetrics();
+    }
+
+    async function selectRoom(roomId) {
+      state.selectedRoomId = roomId;
+      showPage('rooms');
+      renderRooms();
+      await loadSelectedRoom();
+    }
+
+    async function controlDevice(deviceId, nextState) {
+      if (!state.selectedRoomId) return;
+      setNotice(els.deviceNotice, 'Đang gửi lệnh...');
+      try {
+        const data = await requestJson(`/api/rooms/${encodeURIComponent(state.selectedRoomId)}/devices/${encodeURIComponent(deviceId)}/control`, {
+          method: 'POST',
+          body: JSON.stringify({ state: nextState })
+        });
+        setNotice(
+          els.deviceNotice,
+          data.published ? 'Đã cập nhật DB và publish MQTT command.' : 'Đã cập nhật DB, MQTT hiện chưa kết nối.',
+          data.published ? 'ok' : ''
+        );
+        await Promise.all([loadRooms(), loadSelectedRoom(), loadHealth()]);
+        renderRooms();
+        renderMetrics();
+      } catch (error) {
+        setNotice(els.deviceNotice, error.message, 'error');
+      }
+    }
+
+    async function deleteLecturer(id) {
+      if (!confirm(`Xóa giảng viên ${id}?`)) return;
+      try {
+        await requestJson(`/api/lecturers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        setNotice(els.lecturerNotice, 'Đã xóa giảng viên.', 'ok');
+        await loadLecturers();
+      } catch (error) {
+        setNotice(els.lecturerNotice, error.message, 'error');
+      }
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      refreshAll().catch((error) => setNotice(els.deviceNotice, error.message, 'error'));
+    });
+
+    document.querySelectorAll('[data-page]').forEach((button) => {
+      button.addEventListener('click', () => showPage(button.dataset.page));
+    });
+
+    document.getElementById('syncBtn').addEventListener('click', async () => {
+      if (!state.selectedRoomId) return;
+      setNotice(els.deviceNotice, 'Đang publish sync command...');
+      try {
+        const data = await requestJson(`/api/rooms/${encodeURIComponent(state.selectedRoomId)}/sync`, { method: 'POST' });
+        setNotice(
+          els.deviceNotice,
+          data.published ? `Đã publish ${data.total_count} giảng viên.` : 'MQTT hiện chưa kết nối.',
+          data.published ? 'ok' : ''
+        );
+        await loadHealth();
+      } catch (error) {
+        setNotice(els.deviceNotice, error.message, 'error');
+      }
+    });
+
+    document.getElementById('lecturerForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const lecturer = {
+        id: document.getElementById('lecturerId').value.trim(),
+        name: document.getElementById('lecturerName').value.trim(),
+        rfid: document.getElementById('lecturerRfid').value.trim(),
+        authorized: true
+      };
+
+      try {
+        await requestJson('/api/lecturers', {
+          method: 'POST',
+          body: JSON.stringify(lecturer)
+        });
+        event.target.reset();
+        setNotice(els.lecturerNotice, 'Đã lưu giảng viên.', 'ok');
+        await loadLecturers();
+      } catch (error) {
+        setNotice(els.lecturerNotice, error.message, 'error');
+      }
+    });
+
+    document.getElementById('otaForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!state.selectedRoomId) return;
+
+      const payload = {
+        version: document.getElementById('otaVersion').value.trim(),
+        url: document.getElementById('otaUrl').value.trim(),
+        checksum: document.getElementById('otaChecksum').value.trim()
+      };
+
+      try {
+        const data = await requestJson(`/api/rooms/${encodeURIComponent(state.selectedRoomId)}/ota`, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        setNotice(
+          els.otaNotice,
+          data.published ? 'Đã publish OTA command.' : 'MQTT hiện chưa kết nối.',
+          data.published ? 'ok' : ''
+        );
+        await loadHealth();
+      } catch (error) {
+        setNotice(els.otaNotice, error.message, 'error');
+      }
+    });
+
+    refreshAll().catch((error) => {
+      setNotice(els.deviceNotice, error.message, 'error');
+    });
+  </script>
+</body>
+</html>

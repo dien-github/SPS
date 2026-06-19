@@ -49,6 +49,9 @@ bool NetworkManager::initialize() {
     connect(m_mqttClient, &MqttClient::disconnected, this, &NetworkManager::onMqttDisconnected);
     connect(m_mqttClient, &MqttClient::messageReceived, this, &NetworkManager::onMqttMessageReceived);
     connect(m_mqttClient, &MqttClient::connectionFailed, this, &NetworkManager::onMqttError);
+    connect(m_mqttClient, &MqttClient::debugMessage, this, [this](const QString& message) {
+        logDebug(message);
+    });
 
     // Setup network monitoring
     connect(&m_networkCheckTimer, &QTimer::timeout, this, &NetworkManager::checkNetworkStatus);
@@ -102,6 +105,10 @@ bool NetworkManager::initialize() {
     setRunning(true);
     logInfo("Network Manager initialized");
 
+    QTimer::singleShot(0, this, [this]() {
+        connectToMqtt(m_mqttBroker, m_mqttPort);
+    });
+
     return true;
 }
 
@@ -139,6 +146,16 @@ bool NetworkManager::connectToMqtt(const QString& broker, int port) {
     }
 
     logInfo(QString("Connecting to MQTT broker: %1:%2").arg(broker).arg(port));
+
+    QJsonObject lwt;
+    lwt["device_id"] = m_deviceId;
+    lwt["room_id"] = m_roomId;
+    lwt["status"] = "offline";
+    lwt["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    m_mqttClient->setLastWillAndTestament(
+        QString("sps/%1/status/connection").arg(m_roomId),
+        QJsonDocument(lwt).toJson(QJsonDocument::Compact),
+        1);
 
     if (!m_mqttClient->connect(broker, port, m_deviceId)) {
         logError("Failed to initiate MQTT connection");
@@ -561,8 +578,16 @@ void NetworkManager::onMqttConnected() {
     subscribeTopic(baseTopics + "ota", 1);
     subscribeTopic(QString("sps/%1/status/connection").arg(m_roomId), 0);
 
-    // Publish LWT
-    publishStatus(m_roomId, "connected");
+    QJsonObject payload;
+    payload["device_id"] = m_deviceId;
+    payload["room_id"] = m_roomId;
+    payload["status"] = "connected";
+    payload["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    if (m_mqttClient->publish(QString("sps/%1/status/connection").arg(m_roomId),
+                              QJsonDocument(payload).toJson(QJsonDocument::Compact),
+                              0, true)) {
+        m_messagesPublished++;
+    }
 }
 
 /** Marks MQTT as disconnected, emits the signal, and starts the reconnect timer. */
@@ -598,7 +623,16 @@ void NetworkManager::checkNetworkStatus() {
 /** Publishes a "heartbeat" status if MQTT is currently connected. */
 void NetworkManager::publishHeartbeat() {
     if (m_mqttConnected) {
-        publishStatus(m_roomId, "heartbeat");
+        QJsonObject payload;
+        payload["device_id"] = m_deviceId;
+        payload["room_id"] = m_roomId;
+        payload["status"] = "heartbeat";
+        payload["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+        if (m_mqttClient->publish(QString("sps/%1/status/connection").arg(m_roomId),
+                                  QJsonDocument(payload).toJson(QJsonDocument::Compact),
+                                  0, true)) {
+            m_messagesPublished++;
+        }
     }
 }
 
@@ -648,19 +682,19 @@ void NetworkManager::processTopicMessage(const QString& topic, const QByteArray&
 /** Logs the projector command and emits a generic CommandReceived signal. */
 void NetworkManager::handleProjectorCommand(const QString& roomId, const QJsonObject& data) {
     logInfo(QString("Projector command from %1: %2").arg(roomId).arg(data["action"].toString()));
-    emit CommandReceived("projector", data);
+    emit CommandReceived("projector", QJsonDocument(data).toJson(QJsonDocument::Compact));
 }
 
 /** Logs the relay command and emits a generic CommandReceived signal. */
 void NetworkManager::handleRelayCommand(const QString& roomId, const QJsonObject& data) {
     logInfo(QString("Relay command from %1: %2").arg(roomId).arg(data["action"].toString()));
-    emit CommandReceived("relay", data);
+    emit CommandReceived("relay", QJsonDocument(data).toJson(QJsonDocument::Compact));
 }
 
 /** Logs the AC command and emits a generic CommandReceived signal. */
 void NetworkManager::handleAcCommand(const QString& roomId, const QJsonObject& data) {
     logInfo(QString("AC command from %1: %2").arg(roomId).arg(data["action"].toString()));
-    emit CommandReceived("ac", data);
+    emit CommandReceived("ac", QJsonDocument(data).toJson(QJsonDocument::Compact));
 }
 
 /** Logs the sync command and emits the SyncDataReceived signal with the data. */

@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QQueue>
 #include <QMutex>
+#include <QByteArray>
 #include <QDBusInterface>
 #include "../common/sps_service_base.h"
 #include "../common/sps_device_models.h"
@@ -90,6 +91,8 @@ protected slots:
     void onRouterCommandError(uchar cmdId, uchar errorCode);
     /** Handles presence detection events to trigger context scenarios. */
     void onPresenceDetected(bool present);
+    /** Handles a remote command received by svcNetworkManager over MQTT. */
+    void onRemoteCommandReceived(const QString& commandType, const QByteArray& payload);
 
 private:
     // Execution state
@@ -124,6 +127,8 @@ private:
 
     /** Creates and validates the D-Bus interface to the ProtocolRouter service. */
     bool connectToRouter();
+    /** Subscribes to NetworkManager's remote command D-Bus signal. */
+    bool connectToNetworkManager();
     /** Calls a method on the ProtocolRouter D-Bus interface with optional arguments. */
     bool callRouterMethod(const QString& method, const QVariant& arg1 = QVariant(), 
                          const QVariant& arg2 = QVariant());

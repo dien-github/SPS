@@ -5,6 +5,9 @@
 #include <QString>
 #include <QMap>
 #include <QMutex>
+#include <QByteArray>
+#include <QTimer>
+#include <QTcpSocket>
 #include <memory>
 #include "mqtt_defines.h"
 
@@ -108,6 +111,16 @@ private slots:
     void onSubscribed(const QString& topic);
     /** Internal: Handles an unsubscription confirmation. */
     void onUnsubscribed(const QString& topic);
+    /** Internal: Sends the MQTT CONNECT packet after TCP connects. */
+    void onSocketConnected();
+    /** Internal: Handles TCP socket disconnection. */
+    void onSocketDisconnected();
+    /** Internal: Handles TCP socket errors. */
+    void onSocketError(QAbstractSocket::SocketError socketError);
+    /** Internal: Reads and parses MQTT packets from the TCP socket. */
+    void onSocketReadyRead();
+    /** Internal: Sends MQTT keep-alive PINGREQ. */
+    void sendPing();
 
 private:
     /** Parses a command topic into room ID and command type. */
@@ -119,6 +132,24 @@ private:
 
     /** Replaces "{RoomID}" placeholder in a topic template. */
     QString expandTopic(const QString& topicTemplate, const QString& roomId);
+    /** Writes an MQTT control packet with encoded remaining length. */
+    bool writePacket(quint8 packetTypeAndFlags, const QByteArray& body);
+    /** Builds and sends the MQTT CONNECT packet. */
+    bool sendConnectPacket();
+    /** Encodes MQTT variable-length remaining length bytes. */
+    QByteArray encodeRemainingLength(int length) const;
+    /** Appends an MQTT UTF-8 string field to a packet body. */
+    void appendMqttString(QByteArray& body, const QString& value) const;
+    /** Reads an MQTT UTF-8 string field from a byte array. */
+    bool readMqttString(const QByteArray& data, int& offset, QString& value) const;
+    /** Parses all complete MQTT packets currently in the receive buffer. */
+    void processReceiveBuffer();
+    /** Dispatches one decoded MQTT packet. */
+    void handlePacket(quint8 packetTypeAndFlags, const QByteArray& body);
+    /** Handles an incoming MQTT PUBLISH packet. */
+    void handlePublish(quint8 packetTypeAndFlags, const QByteArray& body);
+    /** Returns and increments the next MQTT packet identifier. */
+    quint16 nextPacketId();
 
     // Internal state
     MQTT::ConnectionState m_state;
@@ -144,8 +175,11 @@ private:
     QString m_lastError;
     mutable QMutex m_mutex;
 
-    // MQTT client implementation
-    void* m_mqttClient;  // Placeholder for actual MQTT client instance
+    // MQTT socket implementation
+    QTcpSocket* m_socket;
+    QTimer m_keepAliveTimer;
+    QByteArray m_rxBuffer;
+    quint16 m_nextPacketId;
 };
 
 #endif // MQTT_CLIENT_H

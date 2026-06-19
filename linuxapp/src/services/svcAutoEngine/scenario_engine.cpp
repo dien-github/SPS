@@ -6,9 +6,57 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QVariant>
+
+namespace {
+QString jsonString(const QJsonObject& object, std::initializer_list<const char*> keys) {
+    for (const char* key : keys) {
+        const QJsonValue value = object.value(QString::fromLatin1(key));
+        if (!value.isUndefined() && !value.isNull()) {
+            const QString text = value.toVariant().toString().trimmed();
+            if (!text.isEmpty()) {
+                return text;
+            }
+        }
+    }
+    return QString();
+}
+
+SPS::Device::Type deviceTypeFromString(QString value, const QString& fallback) {
+    value = value.trimmed().toLower();
+    if (value.isEmpty()) {
+        value = fallback.trimmed().toLower();
+    }
+
+    if (value == "light") return SPS::Device::Type::LIGHT;
+    if (value == "relay") return SPS::Device::Type::RELAY;
+    if (value == "curtain") return SPS::Device::Type::CURTAIN;
+    if (value == "screen") return SPS::Device::Type::SCREEN;
+    if (value == "projector") return SPS::Device::Type::PROJECTOR;
+    if (value == "ac" || value == "air_conditioner" || value == "air-conditioner") {
+        return SPS::Device::Type::AC;
+    }
+    return SPS::Device::Type::UNKNOWN;
+}
+
+SPS::Device::State stateFromAction(QString action) {
+    action = action.trimmed().toLower();
+    if (action == "on" || action == "open" || action == "up" ||
+        action == "enable" || action == "enabled" || action == "true" || action == "1") {
+        return SPS::Device::State::ON;
+    }
+    if (action == "off" || action == "close" || action == "closed" ||
+        action == "down" || action == "disable" || action == "disabled" ||
+        action == "false" || action == "0") {
+        return SPS::Device::State::OFF;
+    }
+    return SPS::Device::State::UNKNOWN;
+}
+} // namespace
 
 /** Constructor. Initialises execution context, timers, and counters. */
 ScenarioEngine::ScenarioEngine(QObject* parent)
@@ -45,6 +93,10 @@ bool ScenarioEngine::initialize() {
 
     if (!connectToRouter()) {
         logWarning("Failed to connect to ProtocolRouter - command execution unavailable");
+    }
+
+    if (!connectToNetworkManager()) {
+        logWarning("Failed to connect to NetworkManager - remote MQTT commands unavailable");
     }
 
     if (!registerService()) {
@@ -301,7 +353,13 @@ bool ScenarioEngine::StopScenario(const QString& scenarioId) {
 bool ScenarioEngine::ControlDevice(uchar deviceId, const QString& action) {
     logInfo(QString("Direct device control: id=%1, action=%2").arg(deviceId).arg(action));
 
-    return true;
+    const SPS::Device::State state = stateFromAction(action);
+    if (state == SPS::Device::State::UNKNOWN) {
+        logWarning(QString("Unsupported direct control action: %1").arg(action));
+        return false;
+    }
+
+    return sendControlCommand(SPS::Device::Type::RELAY, QString::number(deviceId), state);
 }
 
 /** D-Bus callable. Registers a context trigger for automatic scenario execution. */
@@ -523,6 +581,23 @@ bool ScenarioEngine::connectToRouter() {
     return true;
 }
 
+/** Subscribes to NetworkManager's remote command D-Bus signal. */
+bool ScenarioEngine::connectToNetworkManager() {
+    const bool ok = QDBusConnection::systemBus().connect(
+        SPS::DBus::SERVICE_NETMGR,
+        SPS::DBus::PATH_NETMGR,
+        SPS::DBus::IFACE_NETMGR,
+        "CommandReceived",
+        this,
+        SLOT(onRemoteCommandReceived(QString,QByteArray)));
+
+    if (ok) {
+        logInfo("Connected to NetworkManager remote command signal");
+    }
+
+    return ok;
+}
+
 /** Calls a method on the ProtocolRouter D-Bus interface with optional arguments. */
 bool ScenarioEngine::callRouterMethod(const QString& method, const QVariant& arg1, const QVariant& arg2) {
     if (!m_routerInterface) {
@@ -584,5 +659,59 @@ void ScenarioEngine::onPresenceDetected(bool present) {
 
     if (present) {
         onContextEvent("presence_detected");
+    }
+}
+
+/** Handles a remote command received from the server through NetworkManager/MQTT. */
+void ScenarioEngine::onRemoteCommandReceived(const QString& commandType, const QByteArray& payload) {
+    const QJsonDocument doc = QJsonDocument::fromJson(payload);
+    if (!doc.isObject()) {
+        logWarning(QString("Ignoring remote %1 command with non-JSON payload").arg(commandType));
+        return;
+    }
+
+    const QJsonObject object = doc.object();
+    const QString normalizedCommand = commandType.trimmed().toLower();
+
+    const QString scenarioId = jsonString(object, {"scenario_id", "scenario", "id"});
+    const QString semanticAction = jsonString(object, {"command", "action"});
+    if (normalizedCommand == "scenario" || semanticAction == "execute_scenario") {
+        if (scenarioId.isEmpty()) {
+            logWarning("Remote scenario command missing scenario_id");
+            return;
+        }
+        ExecuteScenario(scenarioId);
+        return;
+    }
+
+    if (normalizedCommand == "sync" || normalizedCommand == "ota") {
+        logDebug(QString("Remote %1 command is handled by another service").arg(normalizedCommand));
+        return;
+    }
+
+    const QString action = jsonString(object, {"action", "state", "status", "target_state"});
+    const SPS::Device::State state = stateFromAction(action);
+    if (state == SPS::Device::State::UNKNOWN) {
+        logWarning(QString("Remote %1 command has unsupported action/state: %2")
+            .arg(normalizedCommand, action));
+        return;
+    }
+
+    const QString typeText = jsonString(object, {"device_type", "type"});
+    const SPS::Device::Type deviceType = deviceTypeFromString(typeText, normalizedCommand);
+    if (deviceType == SPS::Device::Type::UNKNOWN) {
+        logWarning(QString("Remote command has unsupported device type: %1").arg(typeText));
+        return;
+    }
+
+    QString deviceId = jsonString(object, {"channel", "hardware_id", "device_channel", "device_id", "device", "id"});
+    if (deviceId.isEmpty()) {
+        deviceId = "1";
+    }
+
+    const bool ok = sendControlCommand(deviceType, deviceId, state);
+    if (!ok) {
+        logError(QString("Failed to execute remote %1 command for device %2")
+            .arg(normalizedCommand, deviceId));
     }
 }

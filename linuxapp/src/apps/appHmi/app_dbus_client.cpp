@@ -515,7 +515,7 @@ bool AppDbusCli::setupSignalConnections() {
         connectSignal("com.sps.netmgr", "/com/sps/netmgr", "com.sps.netmgr",
                       "NetworkStatusChanged", SLOT(onNetworkStatusChanged(bool)));
         connectSignal("com.sps.netmgr", "/com/sps/netmgr", "com.sps.netmgr",
-                      "CommandReceived", SLOT(onCommandReceived(QString,QJsonObject)));
+                      "CommandReceived", SLOT(onCommandReceived(QString,QByteArray)));
     }
 
     return ok;
@@ -646,9 +646,10 @@ void AppDbusCli::onNetworkStatusChanged(bool connected) {
 }
 
 /** Handles CommandReceived from the network manager and re-emits it. */
-void AppDbusCli::onCommandReceived(const QString& command, const QJsonObject& payload) {
+void AppDbusCli::onCommandReceived(const QString& command, const QByteArray& payload) {
     logDebug("AppDbusCli", QString("Command received: %1").arg(command));
-    emit commandReceived(command, payload);
+    const QJsonDocument doc = QJsonDocument::fromJson(payload);
+    emit commandReceived(command, doc.isObject() ? doc.object() : QJsonObject());
 }
 
 /** Handles CommandAcknowledged from the protocol router and re-emits it. */

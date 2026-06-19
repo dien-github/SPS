@@ -145,7 +145,7 @@ private slots:
     /** Handles NetworkStatusChanged signal from the network manager D-Bus service. */
     void onNetworkStatusChanged(bool connected);
     /** Handles CommandReceived signal from the network manager D-Bus service. */
-    void onCommandReceived(const QString& command, const QJsonObject& payload);
+    void onCommandReceived(const QString& command, const QByteArray& payload);
     /** Handles CommandAcknowledged signal from the protocol router D-Bus service. */
     void onCommandAck(uchar cmdId);
     /** Handles CommandError signal from the protocol router D-Bus service. */

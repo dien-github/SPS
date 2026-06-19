@@ -15,6 +15,7 @@ ProtocolRouter::ProtocolRouter(QObject* parent)
       m_isConnected(false),
       m_reconnecting(false),
       m_commandPending(false),
+      m_nextSeqId(0),
       m_otaInProgress(false),
       m_otaFileSize(0),
       m_otaBytesReceived(0),
@@ -226,7 +227,7 @@ bool ProtocolRouter::StartOTA(uint firmwareSize) {
 }
 
 /** D-Bus callable. Sends a single 128-byte OTA data chunk. */
-bool ProtocolRouter::SendOTAChunk(uchar chunkNumber, const QByteArray& chunkData) {
+bool ProtocolRouter::SendOTAChunk(ushort chunkNumber, const QByteArray& chunkData) {
     if (!m_otaInProgress || chunkData.size() != SPS::UART::Payload::OTA_CHUNK_DATA_SIZE) {
         logError(QString("Invalid OTA chunk - size: %1").arg(chunkData.size()));
         return false;
@@ -294,6 +295,7 @@ bool ProtocolRouter::queueCommand(UART::CommandId cmdId, const QByteArray& paylo
 
     PendingCommand cmd;
     cmd.cmdId = cmdId;
+    cmd.seqId = m_nextSeqId++;
     cmd.payload = payload;
     cmd.retryCount = 0;
     cmd.maxRetries = maxRetries;
@@ -301,8 +303,10 @@ bool ProtocolRouter::queueCommand(UART::CommandId cmdId, const QByteArray& paylo
 
     m_commandQueue.enqueue(cmd);
 
-    logDebug(QString("Command queued: 0x%1 (queue size: %2)")
-        .arg(static_cast<int>(cmdId), 2, 16, QChar('0')).arg(m_commandQueue.size()));
+    logDebug(QString("Command queued: 0x%1 seq=0x%2 (queue size: %3)")
+        .arg(static_cast<int>(cmdId), 2, 16, QChar('0'))
+        .arg(cmd.seqId, 2, 16, QChar('0'))
+        .arg(m_commandQueue.size()));
 
     // Process queue if not busy
     if (!m_commandPending) {
@@ -322,10 +326,14 @@ bool ProtocolRouter::sendPendingCommand() {
     m_currentCommand = m_commandQueue.dequeue();
     m_commandPending = true;
 
-    QByteArray frame = UartFrame::buildFrame(m_currentCommand.cmdId, m_currentCommand.payload);
+    QByteArray frame = UartFrame::buildFrame(
+        m_currentCommand.cmdId,
+        m_currentCommand.payload,
+        m_currentCommand.seqId);
 
-    logDebug(QString("Sending command: 0x%1 (size: %2)")
+    logDebug(QString("Sending command: 0x%1 seq=0x%2 (size: %3)")
         .arg(static_cast<int>(m_currentCommand.cmdId), 2, 16, QChar('0'))
+        .arg(m_currentCommand.seqId, 2, 16, QChar('0'))
         .arg(frame.size()));
     logDebug(QString("UART TX: %1").arg(QString::fromLatin1(frame.toHex(' ').toUpper())));
 
@@ -347,8 +355,9 @@ void ProtocolRouter::retryPendingCommand() {
         m_currentCommand.retryCount++;
         m_totalRetries++;
 
-        logWarning(QString("Retrying command: 0x%1 (attempt %2/%3)")
+        logWarning(QString("Retrying command: 0x%1 seq=0x%2 (attempt %3/%4)")
             .arg(static_cast<int>(m_currentCommand.cmdId), 2, 16, QChar('0'))
+            .arg(m_currentCommand.seqId, 2, 16, QChar('0'))
             .arg(m_currentCommand.retryCount)
             .arg(m_currentCommand.maxRetries));
 
@@ -405,26 +414,61 @@ void ProtocolRouter::handleMcuResponse(const UartFrame& frame) {
             // Extract original command ID from payload
             {
                 uint8_t originalCmdId = 0;
-                if (!SPS::UART::parseAckPayload(frame.getPayload(), originalCmdId)) {
+                uint8_t originalSeqId = 0;
+                if (!SPS::UART::parseAckPayload(frame.getPayload(), originalCmdId, originalSeqId)) {
                     break;
                 }
-                logDebug(QString("ACK received for command: 0x%1").arg(originalCmdId, 2, 16, QChar('0')));
+                logDebug(QString("ACK received for command: 0x%1 seq=0x%2")
+                    .arg(originalCmdId, 2, 16, QChar('0'))
+                    .arg(originalSeqId, 2, 16, QChar('0')));
+
+                if (!m_commandPending ||
+                    originalCmdId != static_cast<uint8_t>(m_currentCommand.cmdId) ||
+                    originalSeqId != m_currentCommand.seqId) {
+                    logWarning(QString("Ignoring stale ACK for command 0x%1 seq=0x%2")
+                        .arg(originalCmdId, 2, 16, QChar('0'))
+                        .arg(originalSeqId, 2, 16, QChar('0')));
+                    break;
+                }
+
                 emit CommandAcknowledged(originalCmdId);
+                commandSucceeded(static_cast<UART::CommandId>(originalCmdId));
             }
-            commandSucceeded(UART::CommandId::ACK_ALIVE);
             break;
 
         case UART::CommandId::NACK_ERROR: {
             uint8_t errorCmdId = 0;
+            uint8_t errorSeqId = 0;
             uint8_t errorCode = 0;
-            if (!SPS::UART::parseNackPayload(frame.getPayload(), errorCmdId, errorCode)) {
+            if (!SPS::UART::parseNackPayload(frame.getPayload(), errorCmdId, errorSeqId, errorCode)) {
                 break;
             }
-            logError(QString("NACK: command 0x%1, error 0x%2")
+            logError(QString("NACK: command 0x%1 seq=0x%2, error 0x%3")
                 .arg(errorCmdId, 2, 16, QChar('0'))
+                .arg(errorSeqId, 2, 16, QChar('0'))
                 .arg(errorCode, 2, 16, QChar('0')));
+
+            if (!m_commandPending ||
+                errorCmdId != static_cast<uint8_t>(m_currentCommand.cmdId) ||
+                errorSeqId != m_currentCommand.seqId) {
+                logWarning(QString("Ignoring stale NACK for command 0x%1 seq=0x%2")
+                    .arg(errorCmdId, 2, 16, QChar('0'))
+                    .arg(errorSeqId, 2, 16, QChar('0')));
+                break;
+            }
+
             emit CommandError(errorCmdId, errorCode);
-            retryPendingCommand();
+            switch (static_cast<SPS::UART::ErrorCode>(errorCode)) {
+                case SPS::UART::ErrorCode::CRC_ERROR:
+                case SPS::UART::ErrorCode::BUSY:
+                case SPS::UART::ErrorCode::TIMEOUT:
+                    retryPendingCommand();
+                    break;
+                default:
+                    commandFailed(static_cast<UART::CommandId>(errorCmdId),
+                        QString("NACK error 0x%1").arg(errorCode, 2, 16, QChar('0')));
+                    break;
+            }
             break;
         }
 

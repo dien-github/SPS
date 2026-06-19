@@ -104,11 +104,12 @@ struct UartFrame {
     unsigned char header[2];
     unsigned char length;
     unsigned char cmdId;
+    unsigned char seqId;
     QByteArray payload;
     unsigned short crc16;
 
     /** Default constructor: initializes header to the UART protocol sync bytes. */
-    UartFrame() : length(0), cmdId(0), crc16(0) {
+    UartFrame() : length(0), cmdId(0), seqId(0), crc16(0) {
         header[0] = SPS::UART::HEADER_BYTE_0;
         header[1] = SPS::UART::HEADER_BYTE_1;
     }
@@ -120,9 +121,10 @@ struct UartFrame {
         frame.append(header[1]);
         frame.append(length);
         frame.append(cmdId);
+        frame.append(seqId);
         frame.append(payload);
-        frame.append(static_cast<char>((crc16 >> 8) & 0xFF));
         frame.append(static_cast<char>(crc16 & 0xFF));
+        frame.append(static_cast<char>((crc16 >> 8) & 0xFF));
         return frame;
     }
 

@@ -117,6 +117,7 @@ private:
     // Statistics
     qint64 m_bytesRead;
     qint64 m_bytesWritten;
+    uint8_t m_nextSeqId;
 };
 
 #endif // UART_PORT_H

@@ -4,7 +4,7 @@
 
 /** Constructor. Initializes state and connects serial port signals. */
 UartPort::UartPort(QObject* parent)
-    : QObject(parent), m_isOpen(false), m_bytesRead(0), m_bytesWritten(0) {
+    : QObject(parent), m_isOpen(false), m_bytesRead(0), m_bytesWritten(0), m_nextSeqId(0) {
 
     // Connect serial port signals
     connect(&m_serialPort, &QSerialPort::errorOccurred, this, &UartPort::onError);
@@ -151,7 +151,7 @@ bool UartPort::sendFrame(const QByteArray& frameData) {
 
 /** Builds a UART frame with CRC and sends it over the serial port. */
 bool UartPort::sendCommand(UART::CommandId cmdId, const QByteArray& payload) {
-    QByteArray frame = UartFrame::buildFrame(cmdId, payload);
+    QByteArray frame = UartFrame::buildFrame(cmdId, payload, m_nextSeqId++);
     return sendFrame(frame);
 }
 
@@ -279,7 +279,8 @@ void UartPort::processReceivedData() {
         }
 
         uint8_t length = static_cast<uint8_t>(m_receiveBuffer[2]);
-        int frameSize = UART::HEADER_SIZE + UART::LENGTH_SIZE + UART::CMD_ID_SIZE + length + UART::CRC_SIZE;
+        int frameSize = UART::HEADER_SIZE + UART::LENGTH_SIZE + UART::CMD_ID_SIZE +
+            UART::SEQ_ID_SIZE + length + UART::CRC_SIZE;
 
         if (m_receiveBuffer.size() < frameSize) {
             return;  // Wait for complete frame

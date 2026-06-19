@@ -15,8 +15,8 @@ public:
     ~UartFrame() = default;
 
     // Build a frame for transmission
-    /** Builds a complete UART frame (header + payload + CRC) for transmission. */
-    static QByteArray buildFrame(UART::CommandId cmdId, const QByteArray& payload);
+    /** Builds a complete UART frame (header + cmdId + seqId + payload + CRC) for transmission. */
+    static QByteArray buildFrame(UART::CommandId cmdId, const QByteArray& payload, uint8_t seqId = 0);
 
     // Parse incoming frame bytes
     /** Parses raw byte data into a UartFrame, verifying header and CRC. */
@@ -31,6 +31,8 @@ public:
     // Getters
     /** Returns the command ID from the parsed frame. */
     UART::CommandId getCommandId() const { return m_cmdId; }
+    /** Returns the transaction sequence ID from the parsed frame. */
+    uint8_t getSequenceId() const { return m_seqId; }
     /** Returns the payload data from the parsed frame. */
     QByteArray getPayload() const { return m_payload; }
     /** Returns the payload length field. */
@@ -45,6 +47,8 @@ public:
     // Setters
     /** Sets the command ID for building a frame. */
     void setCmdId(UART::CommandId id) { m_cmdId = id; }
+    /** Sets the transaction sequence ID for building a frame. */
+    void setSequenceId(uint8_t id) { m_seqId = id; }
     /** Sets the payload data for building a frame. */
     void setPayload(const QByteArray& data) { m_payload = data; }
 
@@ -65,6 +69,7 @@ private:
     uint8_t m_header[2];
     uint8_t m_length;
     UART::CommandId m_cmdId;
+    uint8_t m_seqId;
     QByteArray m_payload;
     uint16_t m_crc16;
 

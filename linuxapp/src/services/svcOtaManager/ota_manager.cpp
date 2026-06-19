@@ -596,7 +596,7 @@ bool OtaManager::sendOtaViaDbus(const QString& firmwarePath) {
 
         QDBusReply<bool> chunkReply = routerIface.call(
             "SendOTAChunk",
-            static_cast<uchar>(i),
+            static_cast<ushort>(i),
             QByteArray(chunk));
 
         if (!chunkReply.isValid() || !chunkReply.value()) {

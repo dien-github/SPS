@@ -13,6 +13,7 @@
 // Command Response pair
 struct PendingCommand {
     UART::CommandId cmdId;
+    uint8_t seqId;
     QByteArray payload;
     int retryCount;
     int maxRetries;
@@ -84,7 +85,7 @@ public slots:
     /** Initiates an OTA firmware update with the given total size. */
     Q_SCRIPTABLE bool StartOTA(uint firmwareSize);
     /** Sends a single 128-byte OTA data chunk. */
-    Q_SCRIPTABLE bool SendOTAChunk(uchar chunkNumber, const QByteArray& chunkData);
+    Q_SCRIPTABLE bool SendOTAChunk(ushort chunkNumber, const QByteArray& chunkData);
     /** Finalizes the OTA update transfer. */
     Q_SCRIPTABLE bool EndOTA();
 
@@ -156,6 +157,7 @@ private:
     QQueue<PendingCommand> m_commandQueue;
     PendingCommand m_currentCommand;
     bool m_commandPending;
+    uint8_t m_nextSeqId;
     QTimer m_retryTimer;
 
     // Device state cache (deviceId -> status)

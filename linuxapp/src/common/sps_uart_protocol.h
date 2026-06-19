@@ -12,9 +12,10 @@ constexpr uint8_t HEADER_BYTE_1 = 0x55;
 constexpr int HEADER_SIZE = 2;
 constexpr int LENGTH_SIZE = 1;
 constexpr int CMD_ID_SIZE = 1;
+constexpr int SEQ_ID_SIZE = 1;
 constexpr int CRC_SIZE = 2;
-constexpr int MIN_FRAME_SIZE = HEADER_SIZE + LENGTH_SIZE + CMD_ID_SIZE + CRC_SIZE;
-constexpr int MAX_PAYLOAD_SIZE = 256;
+constexpr int MIN_FRAME_SIZE = HEADER_SIZE + LENGTH_SIZE + CMD_ID_SIZE + SEQ_ID_SIZE + CRC_SIZE;
+constexpr int MAX_PAYLOAD_SIZE = 255;
 constexpr int MAX_FRAME_SIZE = MIN_FRAME_SIZE + MAX_PAYLOAD_SIZE;
 
 // Serial port settings
@@ -52,6 +53,10 @@ using CmdId = CommandId;
 enum class ErrorCode : uint8_t {
     CRC_ERROR = 0x01,
     INVALID_PARAM = 0x02,
+    UNSUPPORTED_CMD = 0x03,
+    BUSY = 0x04,
+    OTA_WRITE_FAILED = 0x05,
+    TIMEOUT = 0x06,
 };
 
 enum class DeviceId : uint8_t {
@@ -76,12 +81,15 @@ constexpr int DEVICE_ID_OFFSET = 0;
 constexpr int CONTROL_VALUE_OFFSET = 1;
 constexpr int PROJECTOR_VALUE_OFFSET = 0;
 constexpr int ACK_COMMAND_ID_OFFSET = 0;
+constexpr int ACK_SEQUENCE_ID_OFFSET = 1;
 constexpr int NACK_COMMAND_ID_OFFSET = 0;
-constexpr int NACK_ERROR_CODE_OFFSET = 1;
+constexpr int NACK_SEQUENCE_ID_OFFSET = 1;
+constexpr int NACK_ERROR_CODE_OFFSET = 2;
 constexpr int PRESENCE_VALUE_OFFSET = 0;
 constexpr int OTA_SIZE_BYTES = 4;
 constexpr int OTA_CHUNK_NUMBER_OFFSET = 0;
-constexpr int OTA_CHUNK_DATA_OFFSET = 1;
+constexpr int OTA_CHUNK_INDEX_SIZE = 2;
+constexpr int OTA_CHUNK_DATA_OFFSET = OTA_CHUNK_NUMBER_OFFSET + OTA_CHUNK_INDEX_SIZE;
 constexpr int OTA_CHUNK_DATA_SIZE = 128;
 }
 
@@ -94,6 +102,10 @@ inline uint8_t toByte(DeviceId value) {
 }
 
 inline uint8_t toByte(ControlValue value) {
+    return static_cast<uint8_t>(value);
+}
+
+inline uint8_t toByte(ErrorCode value) {
     return static_cast<uint8_t>(value);
 }
 
@@ -134,33 +146,49 @@ inline QByteArray buildQueryRelayStatusPayload(uint8_t deviceId) {
 
 inline QByteArray buildOtaStartPayload(uint32_t firmwareSize) {
     QByteArray payload;
-    payload.append(static_cast<char>((firmwareSize >> 24) & 0xFF));
-    payload.append(static_cast<char>((firmwareSize >> 16) & 0xFF));
-    payload.append(static_cast<char>((firmwareSize >> 8) & 0xFF));
     payload.append(static_cast<char>(firmwareSize & 0xFF));
+    payload.append(static_cast<char>((firmwareSize >> 8) & 0xFF));
+    payload.append(static_cast<char>((firmwareSize >> 16) & 0xFF));
+    payload.append(static_cast<char>((firmwareSize >> 24) & 0xFF));
     return payload;
 }
 
-inline QByteArray buildOtaDataChunkPayload(uint8_t chunkNumber, const QByteArray& chunkData) {
+inline QByteArray buildOtaDataChunkPayload(uint16_t chunkNumber, const QByteArray& chunkData) {
     QByteArray payload;
-    payload.append(static_cast<char>(chunkNumber));
+    payload.append(static_cast<char>(chunkNumber & 0xFF));
+    payload.append(static_cast<char>((chunkNumber >> 8) & 0xFF));
     payload.append(chunkData);
     return payload;
 }
 
-inline bool parseAckPayload(const QByteArray& payload, uint8_t& originalCmdId) {
-    if (payload.size() <= Payload::ACK_COMMAND_ID_OFFSET) {
+inline QByteArray buildAckPayload(uint8_t originalCmdId, uint8_t originalSeqId) {
+    QByteArray payload;
+    payload.append(static_cast<char>(originalCmdId));
+    payload.append(static_cast<char>(originalSeqId));
+    return payload;
+}
+
+inline QByteArray buildNackPayload(uint8_t originalCmdId, uint8_t originalSeqId, ErrorCode errorCode) {
+    QByteArray payload = buildAckPayload(originalCmdId, originalSeqId);
+    payload.append(static_cast<char>(toByte(errorCode)));
+    return payload;
+}
+
+inline bool parseAckPayload(const QByteArray& payload, uint8_t& originalCmdId, uint8_t& originalSeqId) {
+    if (payload.size() <= Payload::ACK_SEQUENCE_ID_OFFSET) {
         return false;
     }
     originalCmdId = byteAt(payload, Payload::ACK_COMMAND_ID_OFFSET);
+    originalSeqId = byteAt(payload, Payload::ACK_SEQUENCE_ID_OFFSET);
     return true;
 }
 
-inline bool parseNackPayload(const QByteArray& payload, uint8_t& errorCmdId, uint8_t& errorCode) {
+inline bool parseNackPayload(const QByteArray& payload, uint8_t& errorCmdId, uint8_t& errorSeqId, uint8_t& errorCode) {
     if (payload.size() <= Payload::NACK_ERROR_CODE_OFFSET) {
         return false;
     }
     errorCmdId = byteAt(payload, Payload::NACK_COMMAND_ID_OFFSET);
+    errorSeqId = byteAt(payload, Payload::NACK_SEQUENCE_ID_OFFSET);
     errorCode = byteAt(payload, Payload::NACK_ERROR_CODE_OFFSET);
     return true;
 }

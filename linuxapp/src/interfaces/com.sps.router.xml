@@ -63,7 +63,7 @@
     </method>
     
     <method name="SendOTAChunk">
-      <arg type="y" direction="in" name="chunkNumber"/>
+      <arg type="q" direction="in" name="chunkNumber"/>
       <arg type="ay" direction="in" name="chunkData"/>
       <arg type="b" direction="out" name="success"/>
       <!-- Send firmware chunk (max 128 bytes) -->

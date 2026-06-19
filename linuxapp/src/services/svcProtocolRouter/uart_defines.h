@@ -12,6 +12,7 @@ namespace UART {
     constexpr int HEADER_SIZE = SPS::UART::HEADER_SIZE;
     constexpr int LENGTH_SIZE = SPS::UART::LENGTH_SIZE;
     constexpr int CMD_ID_SIZE = SPS::UART::CMD_ID_SIZE;
+    constexpr int SEQ_ID_SIZE = SPS::UART::SEQ_ID_SIZE;
     constexpr int CRC_SIZE = SPS::UART::CRC_SIZE;
     constexpr int MIN_FRAME_SIZE = SPS::UART::MIN_FRAME_SIZE;
     constexpr int MAX_PAYLOAD_SIZE = SPS::UART::MAX_PAYLOAD_SIZE;

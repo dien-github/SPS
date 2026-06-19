@@ -5,6 +5,7 @@ set(COMMON_SOURCES
 set(COMMON_HEADERS
 	sps_logger.h
 	sps_constants.h
+	sps_uart_protocol.h
 	sps_device_models.h
 	sps_service_base.h
 	sps_message_queue.h

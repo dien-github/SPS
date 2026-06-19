@@ -213,6 +213,12 @@ linuxapp/qt/
 
 **Purpose**: Direct communication between SBC and MCU for device control
 
+**Source of truth**: command IDs, device IDs, control values, and payload
+builders/parsers are defined in `src/common/sps_uart_protocol.h`. Application
+services should call typed `com.sps.router` methods such as `ControlLight`,
+`ControlCurtain`, `ControlProjector`, and `ControlAC` instead of assembling raw
+`SendCommand(cmdId, payload)` payloads.
+
 **Frame Structure**:
 ```
 [Header: 0xAA 0x55][Length][CMD_ID][Payload...][CRC-16]
@@ -669,4 +675,3 @@ The implementation is considered complete when:
 **Framework**: Qt6, CMake, D-Bus, MQTT, UART
 **Platform**: Embedded Linux (Raspberry Pi / Custom SBC)
 **Language**: C++17 with Qt framework
-

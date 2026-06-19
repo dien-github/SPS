@@ -1,7 +1,9 @@
 #include "app_dbus_client.h"
 #include "sps_logger.h"
 #include "sps_runtime_config.h"
+#include "sps_uart_protocol.h"
 #include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDBusReply>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -13,20 +15,6 @@
 #define logWarning(comp, msg) Logger::instance().warning(comp, msg)
 
 namespace {
-constexpr uchar CmdLightControl = 0x21;
-constexpr uchar CmdCurtainControl = 0x22;
-constexpr uchar CmdProjectorControl = 0x23;
-constexpr uchar CmdAcControl = 0x24;
-
-constexpr uchar DeviceLightAll = 0xFF;
-constexpr uchar DeviceCurtainAll = 0x01;
-constexpr uchar DeviceScreen = 0x02;
-constexpr uchar DeviceAc = 0x01;
-
-constexpr uchar ValueOff = 0x00;
-constexpr uchar ValueOn = 0x01;
-constexpr uchar ValueStop = 0x02;
-
 QString normalizeKey(QString value) {
     value = value.trimmed().toLower();
     value.remove('-');
@@ -35,17 +23,21 @@ QString normalizeKey(QString value) {
     return value;
 }
 
-bool actionToBinaryValue(const QString& action, uchar& value) {
+bool actionToControlValue(const QString& action, SPS::UART::ControlValue& value) {
     const QString normalized = action.trimmed().toLower();
     if (normalized == "on" || normalized == "open" || normalized == "up") {
-        value = ValueOn;
+        value = SPS::UART::ControlValue::ON;
         return true;
     }
     if (normalized == "off" || normalized == "close" || normalized == "down") {
-        value = ValueOff;
+        value = SPS::UART::ControlValue::OFF;
         return true;
     }
     return false;
+}
+
+bool isOnValue(SPS::UART::ControlValue value) {
+    return value == SPS::UART::ControlValue::ON;
 }
 }
 
@@ -209,10 +201,10 @@ QStringList AppDbusCli::getAvailableScenarios() {
 
 // === Device Control Methods ===
 
-/** Sends a command to a device via the protocol router D-Bus service. */
-bool AppDbusCli::sendDeviceCommand(uchar deviceId, const QString& action) {
-    logDebug("AppDbusCli", QString("Sending device command: id=0x%1, action=%2")
-        .arg(deviceId, 2, 16, QChar('0')).arg(action));
+/** Sends a typed device command via the protocol router D-Bus service. */
+bool AppDbusCli::sendDeviceCommand(uchar commandId, const QString& action) {
+    logDebug("AppDbusCli", QString("Sending device command: command=0x%1, action=%2")
+        .arg(commandId, 2, 16, QChar('0')).arg(action));
 
     if (!m_routerInterface || !m_routerInterface->isValid()) {
         logWarning("AppDbusCli", "ProtocolRouter interface is not available");
@@ -220,69 +212,67 @@ bool AppDbusCli::sendDeviceCommand(uchar deviceId, const QString& action) {
     }
 
     const QString normalizedAction = action.trimmed().toLower();
-    QByteArray payload;
-
-    switch (deviceId) {
-        case CmdLightControl: {
-            uchar value;
-            if (!actionToBinaryValue(normalizedAction, value)) {
+    switch (static_cast<SPS::UART::CommandId>(commandId)) {
+        case SPS::UART::CommandId::LIGHT_CONTROL: {
+            SPS::UART::ControlValue value;
+            if (!actionToControlValue(normalizedAction, value)) {
                 logWarning("AppDbusCli", QString("Unsupported light action: %1").arg(action));
                 return false;
             }
-            payload.append(static_cast<char>(DeviceLightAll));
-            payload.append(static_cast<char>(value));
-            break;
+            return callRouterBool("ControlLight", {
+                QVariant::fromValue(static_cast<quint8>(SPS::UART::toByte(SPS::UART::DeviceId::LIGHT_ALL))),
+                isOnValue(value)
+            });
         }
-        case CmdCurtainControl: {
+        case SPS::UART::CommandId::CURTAIN_CONTROL: {
             QString curtainAction = normalizedAction;
-            uchar targetDevice = DeviceCurtainAll;
+            uchar targetDevice = SPS::UART::toByte(SPS::UART::DeviceId::CURTAIN);
 
             if (curtainAction.startsWith("screen-")) {
-                targetDevice = DeviceScreen;
+                targetDevice = SPS::UART::toByte(SPS::UART::DeviceId::SCREEN);
                 curtainAction = curtainAction.mid(QStringLiteral("screen-").size());
             } else if (curtainAction.startsWith("curtain-")) {
-                targetDevice = DeviceCurtainAll;
+                targetDevice = SPS::UART::toByte(SPS::UART::DeviceId::CURTAIN);
                 curtainAction = curtainAction.mid(QStringLiteral("curtain-").size());
             }
 
-            uchar value;
+            SPS::UART::ControlValue value;
             if (curtainAction == "stop") {
-                value = ValueStop;
-            } else if (!actionToBinaryValue(curtainAction, value)) {
+                value = SPS::UART::ControlValue::STOP;
+            } else if (!actionToControlValue(curtainAction, value)) {
                 logWarning("AppDbusCli", QString("Unsupported curtain/screen action: %1").arg(action));
                 return false;
             }
 
-            payload.append(static_cast<char>(targetDevice));
-            payload.append(static_cast<char>(value));
-            break;
+            return callRouterBool("ControlCurtain", {
+                QVariant::fromValue(static_cast<quint8>(targetDevice)),
+                QVariant::fromValue(static_cast<quint8>(SPS::UART::toByte(value)))
+            });
         }
-        case CmdProjectorControl: {
-            uchar value;
-            if (!actionToBinaryValue(normalizedAction, value)) {
+        case SPS::UART::CommandId::PROJECTOR_CONTROL: {
+            SPS::UART::ControlValue value;
+            if (!actionToControlValue(normalizedAction, value)) {
                 logWarning("AppDbusCli", QString("Unsupported projector action: %1").arg(action));
                 return false;
             }
-            payload.append(static_cast<char>(value));
-            break;
+            return callRouterBool("ControlProjector", { isOnValue(value) });
         }
-        case CmdAcControl: {
-            uchar value;
-            if (!actionToBinaryValue(normalizedAction, value)) {
+        case SPS::UART::CommandId::AC_CONTROL: {
+            SPS::UART::ControlValue value;
+            if (!actionToControlValue(normalizedAction, value)) {
                 logWarning("AppDbusCli", QString("Unsupported AC action: %1").arg(action));
                 return false;
             }
-            payload.append(static_cast<char>(DeviceAc));
-            payload.append(static_cast<char>(value));
-            break;
+            return callRouterBool("ControlAC", {
+                QVariant::fromValue(static_cast<quint8>(SPS::UART::toByte(SPS::UART::DeviceId::AC_ID))),
+                isOnValue(value)
+            });
         }
         default:
             logWarning("AppDbusCli", QString("Unsupported command id: 0x%1")
-                .arg(deviceId, 2, 16, QChar('0')));
+                .arg(commandId, 2, 16, QChar('0')));
             return false;
     }
-
-    return sendRouterCommand(deviceId, payload);
 }
 
 /** Controls a classroom device using UI-level names instead of raw UART command IDs. */
@@ -300,19 +290,21 @@ bool AppDbusCli::controlClassroomDevice(const QString& deviceKey, const QString&
     }
 
     if (key == "roomlights" || key == "lights") {
-        return sendDeviceCommand(CmdLightControl, normalizedAction);
+        return sendDeviceCommand(SPS::UART::toByte(SPS::UART::CommandId::LIGHT_CONTROL), normalizedAction);
     }
     if (key == "curtains" || key == "curtain") {
-        return sendDeviceCommand(CmdCurtainControl, QStringLiteral("curtain-%1").arg(normalizedAction));
+        return sendDeviceCommand(SPS::UART::toByte(SPS::UART::CommandId::CURTAIN_CONTROL),
+                                 QStringLiteral("curtain-%1").arg(normalizedAction));
     }
     if (key == "projectionscreen" || key == "screen") {
-        return sendDeviceCommand(CmdCurtainControl, QStringLiteral("screen-%1").arg(normalizedAction));
+        return sendDeviceCommand(SPS::UART::toByte(SPS::UART::CommandId::CURTAIN_CONTROL),
+                                 QStringLiteral("screen-%1").arg(normalizedAction));
     }
     if (key == "projector") {
-        return sendDeviceCommand(CmdProjectorControl, normalizedAction);
+        return sendDeviceCommand(SPS::UART::toByte(SPS::UART::CommandId::PROJECTOR_CONTROL), normalizedAction);
     }
     if (key == "airconditioner" || key == "ac") {
-        return sendDeviceCommand(CmdAcControl, normalizedAction);
+        return sendDeviceCommand(SPS::UART::toByte(SPS::UART::CommandId::AC_CONTROL), normalizedAction);
     }
 
     logWarning("AppDbusCli", QString("Unknown classroom device key: %1").arg(deviceKey));
@@ -559,26 +551,22 @@ QVariant AppDbusCli::callMethod(QDBusInterface* iface, const QString& method,
     return reply.arguments().at(0);
 }
 
-/** Sends a low-level UART command through the ProtocolRouter service. */
-bool AppDbusCli::sendRouterCommand(uchar cmdId, const QByteArray& payload) {
+/** Calls a typed boolean command on the ProtocolRouter service. */
+bool AppDbusCli::callRouterBool(const QString& method, const QVariantList& args) {
     if (!m_routerInterface || !m_routerInterface->isValid()) {
         logWarning("AppDbusCli", "ProtocolRouter interface is not available");
         return false;
     }
 
-    logInfo("AppDbusCli", QString("Calling router.SendCommand(cmd=0x%1, payload=%2)")
-        .arg(cmdId, 2, 16, QChar('0'))
-        .arg(QString::fromLatin1(payload.toHex(' '))));
+    logInfo("AppDbusCli", QString("Calling router.%1").arg(method));
 
-    QDBusReply<bool> reply = m_routerInterface->call(
-        "SendCommand", QVariant::fromValue(static_cast<quint8>(cmdId)), payload);
-    if (!reply.isValid()) {
-        logError("AppDbusCli", QString("SendCommand failed: %1")
-            .arg(reply.error().message()));
+    QDBusMessage reply = m_routerInterface->callWithArgumentList(QDBus::Block, method, args);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        logError("AppDbusCli", QString("%1 failed: %2").arg(method, reply.errorMessage()));
         return false;
     }
 
-    return reply.value();
+    return !reply.arguments().isEmpty() && reply.arguments().at(0).toBool();
 }
 
 // === Signal Handlers ===

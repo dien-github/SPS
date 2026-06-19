@@ -119,7 +119,7 @@ private:
 
     /** Sends a single command to a device through the ProtocolRouter. */
     bool executeCommand(const ScenarioCommand& cmd);
-    /** Builds and sends a UART control command via the ProtocolRouter D-Bus interface. */
+    /** Sends a typed control command via the ProtocolRouter D-Bus interface. */
     bool sendControlCommand(SPS::Device::Type deviceType, const QString& deviceId, SPS::Device::State state);
 
     /** Creates and validates the D-Bus interface to the ProtocolRouter service. */

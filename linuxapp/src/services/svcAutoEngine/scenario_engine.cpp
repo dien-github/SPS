@@ -1,11 +1,13 @@
 #include "scenario_engine.h"
 #include "../common/sps_logger.h"
 #include "../common/sps_runtime_config.h"
+#include "sps_uart_protocol.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDBusReply>
 
 /** Constructor. Initialises execution context, timers, and counters. */
@@ -419,7 +421,7 @@ bool ScenarioEngine::executeCommand(const ScenarioCommand& cmd) {
     return sendControlCommand(cmd.deviceType, cmd.deviceId, cmd.targetState);
 }
 
-/** Builds and sends a UART control command via the ProtocolRouter D-Bus interface. */
+/** Sends a typed control command via the ProtocolRouter D-Bus interface. */
 bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
                                         const QString& deviceId, SPS::Device::State state) {
     if (!m_routerInterface) {
@@ -427,62 +429,83 @@ bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
         return false;
     }
 
-    SPS::UART::CmdId cmdId;
+    bool on = false;
+    SPS::UART::ControlValue action = SPS::UART::ControlValue::OFF;
+    switch (state) {
+        case SPS::Device::State::ON:
+        case SPS::Device::State::OPEN:
+        case SPS::Device::State::OPENING:
+            on = true;
+            action = SPS::UART::ControlValue::OPEN;
+            break;
+        case SPS::Device::State::OFF:
+        case SPS::Device::State::CLOSED:
+        case SPS::Device::State::CLOSING:
+            on = false;
+            action = SPS::UART::ControlValue::CLOSE;
+            break;
+        default:
+            logWarning(QString("Unhandled state %1, defaulting to OFF").arg(static_cast<int>(state)));
+            break;
+    }
+
+    bool ok = false;
+    uchar id = static_cast<uchar>(deviceId.toUShort(&ok));
+
+    QString method;
+    QVariantList args;
     switch (deviceType) {
-        case SPS::Device::Type::LIGHT:     cmdId = SPS::UART::CmdId::LIGHT_CONTROL; break;
+        case SPS::Device::Type::LIGHT:
+        case SPS::Device::Type::RELAY:
+            method = "ControlLight";
+            args = {
+                QVariant::fromValue(static_cast<quint8>(ok ? id : SPS::UART::toByte(SPS::UART::DeviceId::LIGHT_CLASS))),
+                on
+            };
+            break;
         case SPS::Device::Type::CURTAIN:
-        case SPS::Device::Type::SCREEN:    cmdId = SPS::UART::CmdId::CURTAIN_CONTROL; break;
-        case SPS::Device::Type::PROJECTOR: cmdId = SPS::UART::CmdId::PROJECTOR_CONTROL; break;
-        case SPS::Device::Type::AC:        cmdId = SPS::UART::CmdId::AC_CONTROL; break;
-        case SPS::Device::Type::RELAY:     cmdId = SPS::UART::CmdId::LIGHT_CONTROL; break;
+            method = "ControlCurtain";
+            args = {
+                QVariant::fromValue(static_cast<quint8>(ok ? id : SPS::UART::toByte(SPS::UART::DeviceId::CURTAIN))),
+                QVariant::fromValue(static_cast<quint8>(SPS::UART::toByte(action)))
+            };
+            break;
+        case SPS::Device::Type::SCREEN:
+            method = "ControlCurtain";
+            args = {
+                QVariant::fromValue(static_cast<quint8>(ok ? id : SPS::UART::toByte(SPS::UART::DeviceId::SCREEN))),
+                QVariant::fromValue(static_cast<quint8>(SPS::UART::toByte(action)))
+            };
+            break;
+        case SPS::Device::Type::PROJECTOR:
+            method = "ControlProjector";
+            args = { on };
+            break;
+        case SPS::Device::Type::AC:
+            method = "ControlAC";
+            args = {
+                QVariant::fromValue(static_cast<quint8>(ok ? id : SPS::UART::toByte(SPS::UART::DeviceId::AC_ID))),
+                on
+            };
+            break;
         default:
             logError(QString("Unknown device type: %1").arg(static_cast<int>(deviceType)));
             return false;
     }
 
-    QByteArray payload;
-
-    if (deviceType != SPS::Device::Type::PROJECTOR) {
-        bool ok = false;
-        uchar id = deviceId.toUShort(&ok);
-        payload.append(static_cast<char>(ok ? id : 0x01));
-    }
-
-    uchar stateByte;
-    switch (state) {
-        case SPS::Device::State::ON:
-        case SPS::Device::State::OPEN:
-        case SPS::Device::State::OPENING:
-            stateByte = 0x01;
-            break;
-        case SPS::Device::State::OFF:
-        case SPS::Device::State::CLOSED:
-        case SPS::Device::State::CLOSING:
-            stateByte = 0x00;
-            break;
-        default:
-            logWarning(QString("Unhandled state %1, defaulting to OFF").arg(static_cast<int>(state)));
-            stateByte = 0x00;
-            break;
-    }
-    payload.append(static_cast<char>(stateByte));
-
-    logDebug(QString("Sending command: type=%1, device=%2, state=%3, cmd=0x%4")
+    logDebug(QString("Sending typed command: method=%1, type=%2, device=%3, state=%4")
+        .arg(method)
         .arg(static_cast<int>(deviceType))
         .arg(deviceId)
-        .arg(static_cast<int>(state))
-        .arg(static_cast<int>(cmdId), 2, 16, QChar('0')));
+        .arg(static_cast<int>(state)));
 
-    QDBusReply<bool> reply = m_routerInterface->call(
-        "SendCommand", QVariant::fromValue(static_cast<quint8>(cmdId)), payload);
-
-    if (!reply.isValid()) {
-        logError(QString("SendCommand D-Bus call failed: %1")
-            .arg(reply.error().message()));
+    QDBusMessage reply = m_routerInterface->callWithArgumentList(QDBus::Block, method, args);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        logError(QString("%1 D-Bus call failed: %2").arg(method, reply.errorMessage()));
         return false;
     }
 
-    return reply.value();
+    return !reply.arguments().isEmpty() && reply.arguments().at(0).toBool();
 }
 
 /** Creates and validates the D-Bus interface to the ProtocolRouter service. */

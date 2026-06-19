@@ -7,6 +7,7 @@
 #include <QByteArray>
 #include <QStringList>
 #include <QJsonObject>
+#include <QVariantList>
 
 /** Manages all D-Bus communication for the HMI application. */
 class AppDbusCli : public QObject {
@@ -48,8 +49,8 @@ public:
     /** Retrieves the list of available scenarios and emits scenariosUpdated. */
     Q_INVOKABLE QStringList getAvailableScenarios();
 
-    /** Sends a command to a device via the protocol router. */
-    Q_INVOKABLE bool sendDeviceCommand(uchar deviceId, const QString& action);
+    /** Sends a typed device command via the protocol router. */
+    Q_INVOKABLE bool sendDeviceCommand(uchar commandId, const QString& action);
     /** Controls a classroom device using UI-level names instead of raw UART command IDs. */
     Q_INVOKABLE bool controlClassroomDevice(const QString& deviceKey, const QString& action);
     /** Queries the status of a device from the protocol router. */
@@ -158,8 +159,8 @@ private:
     /** Calls a D-Bus method with up to two optional arguments and returns the result. */
     QVariant callMethod(QDBusInterface* iface, const QString& method, 
                        const QVariant& arg1 = QVariant(), const QVariant& arg2 = QVariant());
-    /** Sends a low-level UART command through the ProtocolRouter service. */
-    bool sendRouterCommand(uchar cmdId, const QByteArray& payload);
+    /** Calls a typed boolean command on the ProtocolRouter service. */
+    bool callRouterBool(const QString& method, const QVariantList& args = QVariantList());
 
     // D-Bus service interfaces
     QDBusInterface* m_authInterface;

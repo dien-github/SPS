@@ -107,10 +107,10 @@ struct UartFrame {
     QByteArray payload;
     unsigned short crc16;
 
-    /** Default constructor: initializes header to 0xAA, 0x55. */
+    /** Default constructor: initializes header to the UART protocol sync bytes. */
     UartFrame() : length(0), cmdId(0), crc16(0) {
-        header[0] = 0xAA;
-        header[1] = 0x55;
+        header[0] = SPS::UART::HEADER_BYTE_0;
+        header[1] = SPS::UART::HEADER_BYTE_1;
     }
 
     /** Serialize the frame into a QByteArray. */
@@ -128,8 +128,9 @@ struct UartFrame {
 
     /** Check if a byte array is a valid UART frame (minimum size + header bytes). */
     static bool isValid(const QByteArray& data) {
-        if (data.size() < 6) return false;
-        if (data[0] != 0xAA || data[1] != 0x55) return false;
+        if (data.size() < SPS::UART::MIN_FRAME_SIZE) return false;
+        if (static_cast<unsigned char>(data[0]) != SPS::UART::HEADER_BYTE_0 ||
+            static_cast<unsigned char>(data[1]) != SPS::UART::HEADER_BYTE_1) return false;
         return true;
     }
 };

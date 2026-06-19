@@ -1,6 +1,7 @@
 #include "protocol_router.h"
 #include "../common/sps_logger.h"
 #include "../common/sps_runtime_config.h"
+#include "sps_uart_protocol.h"
 #include <QThread>
 #include <QTimer>
 
@@ -180,8 +181,7 @@ uchar ProtocolRouter::GetDeviceStatus(uchar deviceId) {
     logDebug(QString("Query device status: 0x%1").arg(deviceId, 2, 16, QChar('0')));
 
     // Send status query command
-    QByteArray payload;
-    payload.append(static_cast<char>(deviceId));
+    QByteArray payload = SPS::UART::buildQueryRelayStatusPayload(deviceId);
     SendCommand(static_cast<uchar>(UART::CommandId::QUERY_RELAY_STATUS), payload);
 
     // Return cached status while waiting for response
@@ -210,11 +210,7 @@ bool ProtocolRouter::StartOTA(uint firmwareSize) {
 
     logInfo(QString("Starting OTA - firmware size: %1 bytes").arg(firmwareSize));
 
-    QByteArray payload;
-    payload.append(static_cast<char>((firmwareSize >> 24) & 0xFF));
-    payload.append(static_cast<char>((firmwareSize >> 16) & 0xFF));
-    payload.append(static_cast<char>((firmwareSize >> 8) & 0xFF));
-    payload.append(static_cast<char>(firmwareSize & 0xFF));
+    QByteArray payload = SPS::UART::buildOtaStartPayload(firmwareSize);
 
     if (!queueCommand(UART::CommandId::OTA_START, payload, 1)) {
         logError("Failed to queue OTA_START command");
@@ -231,16 +227,14 @@ bool ProtocolRouter::StartOTA(uint firmwareSize) {
 
 /** D-Bus callable. Sends a single 128-byte OTA data chunk. */
 bool ProtocolRouter::SendOTAChunk(uchar chunkNumber, const QByteArray& chunkData) {
-    if (!m_otaInProgress || chunkData.size() != 128) {
+    if (!m_otaInProgress || chunkData.size() != SPS::UART::Payload::OTA_CHUNK_DATA_SIZE) {
         logError(QString("Invalid OTA chunk - size: %1").arg(chunkData.size()));
         return false;
     }
 
-    QByteArray payload;
-    payload.append(static_cast<char>(chunkNumber));
-    payload.append(chunkData);
+    QByteArray payload = SPS::UART::buildOtaDataChunkPayload(chunkNumber, chunkData);
 
-    m_otaBytesReceived += 128;
+    m_otaBytesReceived += SPS::UART::Payload::OTA_CHUNK_DATA_SIZE;
     int percentage = (m_otaBytesReceived * 100) / m_otaFileSize;
 
     logDebug(QString("OTA Progress: %1%").arg(percentage));
@@ -266,32 +260,26 @@ bool ProtocolRouter::EndOTA() {
 
 /** Turns a light on (true) or off (false). */
 bool ProtocolRouter::ControlLight(uchar lightId, bool on) {
-    QByteArray payload;
-    payload.append(static_cast<char>(lightId));
-    payload.append(on ? 0x01 : 0x00);
+    QByteArray payload = SPS::UART::buildLightControlPayload(lightId, on);
     return SendCommand(static_cast<uchar>(UART::CommandId::LIGHT_CONTROL), payload);
 }
 
 /** Controls a curtain: 0=close, 1=open, 2=stop. */
 bool ProtocolRouter::ControlCurtain(uchar curtainId, uchar action) {
-    QByteArray payload;
-    payload.append(static_cast<char>(curtainId));
-    payload.append(static_cast<char>(action));
+    QByteArray payload = SPS::UART::buildCurtainControlPayload(
+        curtainId, static_cast<SPS::UART::ControlValue>(action));
     return SendCommand(static_cast<uchar>(UART::CommandId::CURTAIN_CONTROL), payload);
 }
 
 /** Turns the projector on (true) or off (false). */
 bool ProtocolRouter::ControlProjector(bool on) {
-    QByteArray payload;
-    payload.append(on ? 0x01 : 0x00);
+    QByteArray payload = SPS::UART::buildProjectorControlPayload(on);
     return SendCommand(static_cast<uchar>(UART::CommandId::PROJECTOR_CONTROL), payload);
 }
 
 /** Turns an air conditioner on (true) or off (false). */
 bool ProtocolRouter::ControlAC(uchar acId, bool on) {
-    QByteArray payload;
-    payload.append(static_cast<char>(acId));
-    payload.append(on ? 0x01 : 0x00);
+    QByteArray payload = SPS::UART::buildAcControlPayload(acId, on);
     return SendCommand(static_cast<uchar>(UART::CommandId::AC_CONTROL), payload);
 }
 
@@ -415,8 +403,11 @@ void ProtocolRouter::handleMcuResponse(const UartFrame& frame) {
     switch (cmdId) {
         case UART::CommandId::ACK_ALIVE:
             // Extract original command ID from payload
-            if (frame.getPayload().size() > 0) {
-                uchar originalCmdId = static_cast<uchar>(frame.getPayload()[0]);
+            {
+                uint8_t originalCmdId = 0;
+                if (!SPS::UART::parseAckPayload(frame.getPayload(), originalCmdId)) {
+                    break;
+                }
                 logDebug(QString("ACK received for command: 0x%1").arg(originalCmdId, 2, 16, QChar('0')));
                 emit CommandAcknowledged(originalCmdId);
             }
@@ -424,32 +415,33 @@ void ProtocolRouter::handleMcuResponse(const UartFrame& frame) {
             break;
 
         case UART::CommandId::NACK_ERROR: {
-            if (frame.getPayload().size() >= 2) {
-                uchar errorCmdId = static_cast<uchar>(frame.getPayload()[0]);
-                uchar errorCode = static_cast<uchar>(frame.getPayload()[1]);
-                logError(QString("NACK: command 0x%1, error 0x%2")
-                    .arg(errorCmdId, 2, 16, QChar('0'))
-                    .arg(errorCode, 2, 16, QChar('0')));
-                emit CommandError(errorCmdId, errorCode);
-                retryPendingCommand();
+            uint8_t errorCmdId = 0;
+            uint8_t errorCode = 0;
+            if (!SPS::UART::parseNackPayload(frame.getPayload(), errorCmdId, errorCode)) {
+                break;
             }
+            logError(QString("NACK: command 0x%1, error 0x%2")
+                .arg(errorCmdId, 2, 16, QChar('0'))
+                .arg(errorCode, 2, 16, QChar('0')));
+            emit CommandError(errorCmdId, errorCode);
+            retryPendingCommand();
             break;
         }
 
         case UART::CommandId::QUERY_RELAY_STATUS: {
-            if (frame.getPayload().size() >= 2) {
-                uchar deviceId = static_cast<uchar>(frame.getPayload()[0]);
-                uchar status = static_cast<uchar>(frame.getPayload()[1]);
-                updateDeviceStatus(deviceId, status);
-                emit DeviceStatusChanged(deviceId, status);
+            uint8_t deviceId = 0;
+            uint8_t status = 0;
+            if (SPS::UART::parseDeviceStatusPayload(frame.getPayload(), deviceId, status)) {
+                updateDeviceStatus(static_cast<uchar>(deviceId), static_cast<uchar>(status));
+                emit DeviceStatusChanged(static_cast<uchar>(deviceId), static_cast<uchar>(status));
             }
             commandSucceeded(cmdId);
             break;
         }
 
         case UART::CommandId::PRESENCE_ALERT: {
-            if (frame.getPayload().size() > 0) {
-                bool isPresent = frame.getPayload()[0] != 0;
+            bool isPresent = false;
+            if (SPS::UART::parsePresencePayload(frame.getPayload(), isPresent)) {
                 logDebug(QString("Presence: %1").arg(isPresent ? "Yes" : "No"));
                 emit PresenceDetected(isPresent);
             }

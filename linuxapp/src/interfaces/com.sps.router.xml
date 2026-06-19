@@ -6,6 +6,33 @@
     <!-- Protocol Router Service Interface (UART ↔ MCU) -->
     
     <!-- Methods -->
+    <method name="ControlLight">
+      <arg type="y" direction="in" name="lightId"/>
+      <arg type="b" direction="in" name="on"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Typed light control command; router builds the UART payload -->
+    </method>
+
+    <method name="ControlCurtain">
+      <arg type="y" direction="in" name="curtainId"/>
+      <arg type="y" direction="in" name="action"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Typed curtain/screen control command; action: 0=close, 1=open, 2=stop -->
+    </method>
+
+    <method name="ControlProjector">
+      <arg type="b" direction="in" name="on"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Typed projector control command; router builds the UART payload -->
+    </method>
+
+    <method name="ControlAC">
+      <arg type="y" direction="in" name="acId"/>
+      <arg type="b" direction="in" name="on"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Typed air conditioner control command; router builds the UART payload -->
+    </method>
+
     <method name="SendCommand">
       <arg type="y" direction="in" name="cmdId"/>
       <arg type="ay" direction="in" name="payload"/>

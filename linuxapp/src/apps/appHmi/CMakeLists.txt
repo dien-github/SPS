@@ -23,6 +23,9 @@ qt_add_qml_module(${TARGET_NAME}
 	VERSION 1.0.0
 	QML_FILES
 		qml/Main.qml
+	RESOURCES
+		qml/assets/compcore-emblem.png
+		qml/assets/compcore-wordmark-light.png
 )
 
 target_link_libraries(${TARGET_NAME} PRIVATE

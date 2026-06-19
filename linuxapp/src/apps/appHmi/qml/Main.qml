@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Window
 
 ApplicationWindow {
+    id: appWindow
     visible: true
     width: Screen.width
     height: Screen.height
@@ -24,6 +25,9 @@ ApplicationWindow {
 
     property string warningAlertType: ""
     property string warningMessage: ""
+    readonly property string szAppVersion: "v0.1.0"
+    readonly property url compCoreWordmarkLogo: Qt.resolvedUrl("assets/compcore-wordmark-light.png")
+    readonly property url compCoreEmblemLogo: Qt.resolvedUrl("assets/compcore-emblem.png")
 
     function refreshScenarios() {
         var scenarios = dbusClient.getAvailableScenarios()
@@ -259,111 +263,426 @@ ApplicationWindow {
         }
     }
 
+    component BrandLogo: Image {
+        source: appWindow.compCoreWordmarkLogo
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        mipmap: true
+    }
+
+    component LockBackground: Canvas {
+        anchors.fill: parent
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+
+            var bg = ctx.createLinearGradient(0, 0, width, height)
+            bg.addColorStop(0.0, "#06111d")
+            bg.addColorStop(0.55, "#071d2b")
+            bg.addColorStop(1.0, "#030812")
+            ctx.fillStyle = bg
+            ctx.fillRect(0, 0, width, height)
+
+            var glow = ctx.createRadialGradient(width * 0.78, height * 0.44, 20,
+                                                width * 0.78, height * 0.44, width * 0.42)
+            glow.addColorStop(0.0, "rgba(26, 218, 216, 0.18)")
+            glow.addColorStop(0.5, "rgba(11, 85, 112, 0.12)")
+            glow.addColorStop(1.0, "rgba(0, 0, 0, 0)")
+            ctx.fillStyle = glow
+            ctx.fillRect(0, 0, width, height)
+
+            ctx.save()
+            ctx.strokeStyle = "rgba(37, 219, 224, 0.06)"
+            ctx.lineWidth = 1
+            for (var i = 0; i < 14; ++i) {
+                var x = width * 0.56 + i * width * 0.035
+                ctx.beginPath()
+                ctx.moveTo(x, height * 0.12)
+                ctx.lineTo(x + width * 0.12, height * 0.88)
+                ctx.stroke()
+            }
+            ctx.restore()
+        }
+    }
+
+    component DecorativeBrandVisual: Item {
+        id: decorativeVisual
+        property real visualSize: 360
+
+        width: visualSize
+        height: visualSize
+
+        Canvas {
+            anchors.fill: parent
+            opacity: 0.9
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+
+            onPaint: {
+                var ctx = getContext("2d")
+                var cx = width / 2
+                var cy = height / 2
+                var radius = Math.min(width, height) / 2 - 8
+                ctx.clearRect(0, 0, width, height)
+
+                ctx.strokeStyle = "rgba(37, 219, 224, 0.14)"
+                ctx.lineWidth = 1.4
+                for (var i = 0; i < 4; ++i) {
+                    ctx.beginPath()
+                    ctx.arc(cx, cy, radius * (0.52 + i * 0.14), 0, Math.PI * 2)
+                    ctx.stroke()
+                }
+
+                ctx.strokeStyle = "rgba(37, 219, 224, 0.7)"
+                ctx.lineWidth = 2
+                ctx.beginPath()
+                ctx.arc(cx, cy, radius * 0.86, Math.PI * 0.78, Math.PI * 1.25)
+                ctx.stroke()
+            }
+        }
+
+        Image {
+            anchors.centerIn: parent
+            width: parent.width * 0.62
+            height: parent.height * 0.62
+            source: appWindow.compCoreEmblemLogo
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
+            opacity: 0.46
+        }
+    }
+
+    component CardReaderIcon: Item {
+        id: readerIcon
+
+        Canvas {
+            anchors.fill: parent
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+
+            onPaint: {
+                var ctx = getContext("2d")
+                var s = Math.min(width, height)
+                var cardX = width * 0.18
+                var cardY = height * 0.34
+                var cardW = width * 0.40
+                var cardH = height * 0.30
+                ctx.clearRect(0, 0, width, height)
+
+                ctx.fillStyle = "#c6e2f1"
+                ctx.strokeStyle = "#e8f7ff"
+                ctx.lineWidth = Math.max(1.2, s * 0.018)
+                var cardRadius = s * 0.035
+                ctx.beginPath()
+                ctx.moveTo(cardX + cardRadius, cardY)
+                ctx.lineTo(cardX + cardW - cardRadius, cardY)
+                ctx.quadraticCurveTo(cardX + cardW, cardY, cardX + cardW, cardY + cardRadius)
+                ctx.lineTo(cardX + cardW, cardY + cardH - cardRadius)
+                ctx.quadraticCurveTo(cardX + cardW, cardY + cardH,
+                                     cardX + cardW - cardRadius, cardY + cardH)
+                ctx.lineTo(cardX + cardRadius, cardY + cardH)
+                ctx.quadraticCurveTo(cardX, cardY + cardH, cardX, cardY + cardH - cardRadius)
+                ctx.lineTo(cardX, cardY + cardRadius)
+                ctx.quadraticCurveTo(cardX, cardY, cardX + cardRadius, cardY)
+                ctx.closePath()
+                ctx.fill()
+                ctx.stroke()
+
+                ctx.fillStyle = "#061a27"
+                ctx.fillRect(cardX + cardW * 0.18, cardY + cardH * 0.22,
+                             cardW * 0.42, cardH * 0.24)
+
+                ctx.strokeStyle = "#2ff5ec"
+                ctx.lineCap = "round"
+                ctx.lineWidth = Math.max(2.4, s * 0.032)
+                for (var i = 0; i < 3; ++i) {
+                    ctx.beginPath()
+                    ctx.arc(cardX + cardW * 1.02, cardY + cardH * 0.5,
+                            s * (0.13 + i * 0.12), -0.72, 0.72)
+                    ctx.stroke()
+                }
+            }
+        }
+    }
+
+    component RfidStatusCard: Rectangle {
+        id: rfidCard
+        property real scaleFactor: 1.0
+
+        radius: Math.round(16 * scaleFactor)
+        color: "#061927"
+        border.color: "#13cfd4"
+        border.width: Math.max(1, Math.round(1.2 * scaleFactor))
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: Math.round(24 * rfidCard.scaleFactor)
+            spacing: Math.round(24 * rfidCard.scaleFactor)
+
+            Rectangle {
+                Layout.preferredWidth: Math.round(132 * rfidCard.scaleFactor)
+                Layout.preferredHeight: Math.round(116 * rfidCard.scaleFactor)
+                Layout.alignment: Qt.AlignVCenter
+                radius: Math.round(14 * rfidCard.scaleFactor)
+                color: "#071f30"
+                border.color: "#22f0e8"
+                border.width: Math.max(1, Math.round(1.4 * rfidCard.scaleFactor))
+
+                CardReaderIcon {
+                    anchors.centerIn: parent
+                    width: parent.width * 0.74
+                    height: parent.height * 0.74
+                }
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 1
+                Layout.preferredHeight: Math.round(108 * rfidCard.scaleFactor)
+                Layout.alignment: Qt.AlignVCenter
+                color: "#2f6b7f"
+                opacity: 0.72
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                spacing: Math.round(10 * rfidCard.scaleFactor)
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Math.round(14 * rfidCard.scaleFactor)
+
+                    Image {
+                        Layout.preferredWidth: Math.round(46 * rfidCard.scaleFactor)
+                        Layout.preferredHeight: Math.round(46 * rfidCard.scaleFactor)
+                        source: appWindow.compCoreEmblemLogo
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        mipmap: true
+                    }
+
+                    Text {
+                        text: "RFID Scanner Ready"
+                        color: "#ffffff"
+                        font.pixelSize: Math.round(29 * rfidCard.scaleFactor)
+                        font.bold: true
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
+
+                Text {
+                    text: "Waiting for authorized card..."
+                    color: "#25f3ec"
+                    font.pixelSize: Math.round(22 * rfidCard.scaleFactor)
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+
+                Text {
+                    text: "Place the card near the reader"
+                    color: "#dce8ef"
+                    opacity: 0.9
+                    font.pixelSize: Math.round(18 * rfidCard.scaleFactor)
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+            }
+        }
+    }
+
+    component SmallStatusIcon: Item {
+        id: smallStatusIcon
+        property string iconType: "network"
+        property color indicatorColor: "#22ff88"
+        property real iconSize: 30
+
+        width: iconSize + 10
+        height: iconSize + 22
+
+        Canvas {
+            id: iconCanvas
+            width: smallStatusIcon.iconSize
+            height: smallStatusIcon.iconSize
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+
+            onPaint: {
+                var ctx = getContext("2d")
+                var s = Math.min(width, height)
+                ctx.clearRect(0, 0, width, height)
+                ctx.strokeStyle = "#f2f7fb"
+                ctx.lineWidth = Math.max(1.2, s * 0.065)
+                ctx.lineCap = "round"
+                ctx.lineJoin = "round"
+
+                if (smallStatusIcon.iconType === "shield") {
+                    ctx.beginPath()
+                    ctx.moveTo(s * 0.50, s * 0.08)
+                    ctx.lineTo(s * 0.82, s * 0.20)
+                    ctx.lineTo(s * 0.77, s * 0.56)
+                    ctx.quadraticCurveTo(s * 0.72, s * 0.76, s * 0.50, s * 0.90)
+                    ctx.quadraticCurveTo(s * 0.28, s * 0.76, s * 0.23, s * 0.56)
+                    ctx.lineTo(s * 0.18, s * 0.20)
+                    ctx.closePath()
+                    ctx.stroke()
+
+                    ctx.beginPath()
+                    ctx.moveTo(s * 0.36, s * 0.49)
+                    ctx.lineTo(s * 0.47, s * 0.60)
+                    ctx.lineTo(s * 0.66, s * 0.38)
+                    ctx.stroke()
+                } else {
+                    ctx.beginPath()
+                    ctx.arc(s * 0.5, s * 0.5, s * 0.38, 0, Math.PI * 2)
+                    ctx.stroke()
+
+                    ctx.beginPath()
+                    ctx.moveTo(s * 0.16, s * 0.5)
+                    ctx.lineTo(s * 0.84, s * 0.5)
+                    ctx.moveTo(s * 0.24, s * 0.32)
+                    ctx.lineTo(s * 0.76, s * 0.32)
+                    ctx.moveTo(s * 0.24, s * 0.68)
+                    ctx.lineTo(s * 0.76, s * 0.68)
+                    ctx.stroke()
+
+                    ctx.save()
+                    ctx.translate(s * 0.5, s * 0.5)
+                    ctx.scale(0.45, 1)
+                    ctx.beginPath()
+                    ctx.arc(0, 0, s * 0.38, 0, Math.PI * 2)
+                    ctx.stroke()
+                    ctx.restore()
+                }
+            }
+        }
+
+        Rectangle {
+            width: Math.max(8, Math.round(smallStatusIcon.iconSize * 0.30))
+            height: width
+            radius: width / 2
+            color: smallStatusIcon.indicatorColor
+            anchors.horizontalCenter: iconCanvas.horizontalCenter
+            anchors.top: iconCanvas.bottom
+            anchors.topMargin: Math.max(3, Math.round(smallStatusIcon.iconSize * 0.14))
+        }
+    }
+
     //
     // LOCK SCREEN
     //
     Rectangle {
         id: lockScreen
         anchors.fill: parent
-        color: "#1e1e1e"
         visible: bIsLocked
+        clip: true
 
-        Image {
-            id: backgroundImage
-            anchors.fill: parent
-            fillMode: Image.PreserveAspectCrop
-            opacity: 0.3
-            source: "" // Could load a background image
+        property real uiScale: Math.max(0.62, Math.min(1.35, Math.min(width / 1280, height / 720)))
+        property int edgeMargin: Math.round(72 * uiScale)
+        property real leftColumnWidth: Math.min(width * 0.58, 720 * uiScale)
+
+        LockBackground {}
+
+        DecorativeBrandVisual {
+            visualSize: Math.min(lockScreen.width * 0.35, lockScreen.height * 0.58)
+            anchors.right: parent.right
+            anchors.rightMargin: Math.round(lockScreen.edgeMargin * 1.05)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: lockScreen.width >= 780
         }
 
-        ColumnLayout {
-            anchors.centerIn: parent
-            spacing: 40
-            width: parent.width * 0.8
+        BrandLogo {
+            id: loginWordmark
+            anchors.left: parent.left
+            anchors.leftMargin: lockScreen.edgeMargin
+            anchors.top: parent.top
+            anchors.topMargin: Math.round(70 * lockScreen.uiScale)
+            width: Math.min(lockScreen.leftColumnWidth * 0.48, 270 * lockScreen.uiScale)
+            height: width * 0.205
+        }
+
+        Column {
+            id: loginIntro
+            anchors.left: parent.left
+            anchors.leftMargin: lockScreen.edgeMargin
+            anchors.top: loginWordmark.bottom
+            anchors.topMargin: Math.round(78 * lockScreen.uiScale)
+            width: lockScreen.leftColumnWidth
+            spacing: Math.round(16 * lockScreen.uiScale)
 
             Text {
-                text: "SMART PRESENTATION SYSTEM"
-                color: "white"
-                font.pixelSize: 48
+                width: parent.width
+                text: "SMART PODIUM SYSTEM"
+                color: "#ffffff"
+                font.pixelSize: Math.round(40 * lockScreen.uiScale)
                 font.bold: true
-                font.family: "Arial"
-                Layout.alignment: Qt.AlignHCenter
+                elide: Text.ElideRight
             }
 
             Text {
-                text: "Classroom Control Interface"
-                color: "#00bfff"
-                font.pixelSize: 32
-                Layout.alignment: Qt.AlignHCenter
+                width: parent.width
+                text: "Classroom HMI Login"
+                color: "#25f3ec"
+                font.pixelSize: Math.round(26 * lockScreen.uiScale)
+                elide: Text.ElideRight
             }
 
-            Rectangle {
-                width: 300
-                height: 200
-                color: "#2a2a2a"
-                border.color: "#00bfff"
-                border.width: 3
-                radius: 10
-                Layout.alignment: Qt.AlignHCenter
+            Text {
+                width: parent.width
+                text: "Scan your lecturer RFID card to unlock classroom controls"
+                color: "#dce8ef"
+                opacity: 0.92
+                font.pixelSize: Math.round(19 * lockScreen.uiScale)
+                wrapMode: Text.WordWrap
+            }
+        }
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 20
-                    spacing: 15
+        RfidStatusCard {
+            id: loginRfidCard
+            anchors.left: parent.left
+            anchors.leftMargin: lockScreen.edgeMargin
+            anchors.top: loginIntro.bottom
+            anchors.topMargin: Math.round(34 * lockScreen.uiScale)
+            width: lockScreen.leftColumnWidth
+            height: Math.max(126, Math.round(184 * lockScreen.uiScale))
+            scaleFactor: lockScreen.uiScale
+        }
 
-                    Text {
-                        text: "RFID Scanner Ready"
-                        color: "white"
-                        font.pixelSize: 24
-                        font.bold: true
-                        Layout.alignment: Qt.AlignHCenter
-                    }
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: lockScreen.edgeMargin
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: Math.round(50 * lockScreen.uiScale)
+            spacing: Math.round(22 * lockScreen.uiScale)
 
-                    Text {
-                        text: "Please swipe your ID card"
-                        color: "#cccccc"
-                        font.pixelSize: 18
-                        Layout.alignment: Qt.AlignHCenter
-                    }
-
-                    Text {
-                        id: rfidStatus
-                        text: "Waiting for card..."
-                        color: "#00bfff"
-                        font.pixelSize: 16
-                        Layout.alignment: Qt.AlignHCenter
-                    }
-                }
+            SmallStatusIcon {
+                iconType: "network"
+                iconSize: Math.round(30 * lockScreen.uiScale)
+                indicatorColor: bNetworkConnected ? "#1fff83" : "#ff6b6b"
             }
 
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                spacing: 20
-
-                Text {
-                    text: "Network: " + (bNetworkConnected ? "Connected" : "Offline")
-                    color: bNetworkConnected ? "#00ff00" : "#ff6b6b"
-                    font.pixelSize: 14
-                }
-
-                Text {
-                    text: "Auth: " + szAuthStatus
-                    color: "#00bfff"
-                    font.pixelSize: 14
-                }
+            SmallStatusIcon {
+                iconType: "shield"
+                iconSize: Math.round(30 * lockScreen.uiScale)
+                indicatorColor: "#2db7ff"
             }
+        }
 
-            Button {
-                text: "TEST LOGIN (Demo)"
-                Layout.alignment: Qt.AlignHCenter
-                font.pixelSize: 18
-                width: 200
-                height: 60
-                onClicked: {
-                    console.log("[QML]: Test login clicked")
-                    dbusClient.unlockScreen("RFID001")
-                }
-            }
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: lockScreen.edgeMargin
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: Math.round(52 * lockScreen.uiScale)
+            text: appWindow.szAppVersion
+            color: "#f2f7fb"
+            opacity: 0.92
+            font.pixelSize: Math.round(18 * lockScreen.uiScale)
         }
     }
 

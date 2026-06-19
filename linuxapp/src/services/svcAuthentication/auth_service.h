@@ -6,6 +6,9 @@
 #include <QMap>
 #include <QDateTime>
 #include <QTimer>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "../common/sps_service_base.h"
 #include "../common/sps_device_models.h"
 
@@ -48,6 +51,9 @@ signals:
     /** Internal signal: raw RFID data received from the reader. */
     void rfidDataReceived(const QString& data);
 
+    /** Emitted when a room monitoring condition triggers an alert (ROOM_USAGE_OVERRUN, OUT_OF_SCHOOL_HOURS). */
+    void RoomMonitorAlert(const QString& alertType, const QString& payloadJson);
+
 public slots:
     /** D-Bus callable: returns the current authentication status integer. */
     Q_SCRIPTABLE int GetAuthStatus() const;
@@ -57,6 +63,9 @@ public slots:
     Q_SCRIPTABLE bool LockScreen();
     /** D-Bus callable: returns the authenticated lecturer's name. */
     Q_SCRIPTABLE QString GetAuthenticatedLecturer() const;
+
+    /** D-Bus callable: marks the room as active when a scenario executes or device turns on. */
+    Q_SCRIPTABLE bool SetRoomActive();
 
     /** Handles an incoming RFID read from the reader hardware. */
     void onRfidRead(const QString& rfidData);
@@ -70,6 +79,9 @@ public slots:
 protected slots:
     /** Locks the screen when the auto-lock idle timer fires. */
     void onLockTimeout();
+
+    /** Periodically checks room usage conditions (school hours, max duration). */
+    void onMonitorTimer();
 
 private:
     /** Internal states for the authentication FSM. */
@@ -101,6 +113,7 @@ private:
     // Configuration
     int m_lockTimeoutMs;
     QString m_databasePath;
+    QString m_schoolHoursPath;
 
     // Current state
     AuthStatus m_status;
@@ -115,11 +128,35 @@ private:
     // Timers
     QTimer m_autoLockTimer;
     QTimer m_debounceTimer;
+    QTimer m_monitorTimer;
 
     // Statistics
     int m_totalAuthAttempts;
     int m_successfulAuths;
     int m_failedAuths;
+
+    // Room monitoring
+    static constexpr int MONITOR_INTERVAL_MS = 60000;
+    static constexpr int MAX_ROOM_USAGE_MINUTES = 240;
+    QDateTime m_activeStartTime;
+    bool m_roomActive;
+    bool m_alertOverrunSent;
+    bool m_alertOutOfHoursSent;
+
+    // School hours
+    struct SchoolDayHours {
+        int startHour = 7;
+        int startMinute = 0;
+        int endHour = 18;
+        int endMinute = 0;
+    };
+    QMap<int, SchoolDayHours> m_schoolHours;
+
+    // Room monitoring methods
+    void loadSchoolHours();
+    bool isWithinSchoolHours() const;
+    void publishRoomAlert(const QString& alertType, const QString& reason, int elapsedMinutes);
+    void resetRoomMonitoring();
 };
 
 #endif // AUTH_SERVICE_H

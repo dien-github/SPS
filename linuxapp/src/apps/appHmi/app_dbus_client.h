@@ -39,6 +39,9 @@ public:
     Q_INVOKABLE bool lockScreen();
     /** Returns the name of the currently authenticated lecturer, or an empty string. */
     Q_INVOKABLE QString getAuthenticatedLecturer();
+
+    /** Marks the room as active for session monitoring. */
+    Q_INVOKABLE bool setRoomActive();
     
     /** Sends a request to start the given scenario. */
     Q_INVOKABLE bool executeScenario(const QString& scenarioId);
@@ -125,6 +128,9 @@ signals:
     /** Emitted when a command is received over MQTT. */
     void commandReceived(const QString& command, const QJsonObject& payload);
 
+    /** Emitted when a room monitoring alert is triggered. */
+    void roomMonitorAlert(const QString& alertType, const QString& payloadJson);
+
 private slots:
     /** Handles AuthStatusChanged signal from the authentication D-Bus service. */
     void onAuthStatusChanged(int status);
@@ -146,6 +152,9 @@ private slots:
     void onNetworkStatusChanged(bool connected);
     /** Handles CommandReceived signal from the network manager D-Bus service. */
     void onCommandReceived(const QString& command, const QByteArray& payload);
+
+    /** Handles RoomMonitorAlert signal from the auth service D-Bus service. */
+    void onRoomMonitorAlert(const QString& alertType, const QString& payloadJson);
     /** Handles CommandAcknowledged signal from the protocol router D-Bus service. */
     void onCommandAck(uchar cmdId);
     /** Handles CommandError signal from the protocol router D-Bus service. */

@@ -22,6 +22,9 @@ ApplicationWindow {
     property var scenarioIds: []
     property string szFooterStatus: "Ready"
 
+    property string warningAlertType: ""
+    property string warningMessage: ""
+
     function refreshScenarios() {
         var scenarios = dbusClient.getAvailableScenarios()
         scenarioIds = scenarios ? scenarios : []
@@ -50,6 +53,7 @@ ApplicationWindow {
     function controlDevice(deviceKey, action) {
         console.log("[QML]: Device control: " + deviceKey + " -> " + action)
         dbusClient.controlClassroomDevice(deviceKey, action)
+        dbusClient.setRoomActive()
     }
 
     Connections {
@@ -86,8 +90,19 @@ ApplicationWindow {
         function onScenariosUpdated(scenarios) {
             scenarioIds = scenarios
         }
+        function onRoomMonitorAlert(alertType, payloadJson) {
+            console.log("[QML]: Room monitor alert: " + alertType)
+            var payload = JSON.parse(payloadJson)
+            warningAlertType = alertType
+            if (alertType === "ROOM_USAGE_OVERRUN") {
+                warningMessage = "Warning: Room usage has exceeded 4 hours (" + payload.elapsed_minutes + " minutes)"
+            } else if (alertType === "OUT_OF_SCHOOL_HOURS") {
+                warningMessage = "Warning: Current time is outside school operating hours"
+            }
+        }
         function onScenarioStarted(scenarioId) {
             console.log("[QML]: Scenario started: " + scenarioId)
+            dbusClient.setRoomActive()
             szCurrentScenario = scenarioId
             szFooterStatus = "Executing"
         }
@@ -427,6 +442,52 @@ ApplicationWindow {
                             szCurrentScenario = ""
                             szFooterStatus = "Ready"
                             bIsLocked = true
+                        }
+                    }
+                }
+            }
+
+            // Warning banner for room monitoring alerts
+            Rectangle {
+                id: warningBanner
+                Layout.fillWidth: true
+                Layout.preferredHeight: warningMessage.length > 0 ? 48 : 0
+                radius: 8
+                color: "#fef3c7"
+                border.color: "#f59e0b"
+                border.width: 1
+                visible: warningMessage.length > 0
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 10
+
+                    Text {
+                        text: "\u26A0"
+                        color: "#d97706"
+                        font.pixelSize: 20
+                    }
+
+                    Text {
+                        text: warningMessage
+                        color: "#92400e"
+                        font.pixelSize: 14
+                        font.bold: true
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Button {
+                        text: "\u2715"
+                        Layout.preferredWidth: 30
+                        Layout.preferredHeight: 30
+                        font.pixelSize: 14
+                        flat: true
+                        onClicked: {
+                            warningMessage = ""
+                            warningAlertType = ""
                         }
                     }
                 }

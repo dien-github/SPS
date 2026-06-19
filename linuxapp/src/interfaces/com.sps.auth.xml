@@ -27,6 +27,11 @@
       <!-- Returns name of currently authenticated lecturer -->
     </method>
 
+    <method name="SetRoomActive">
+      <arg type="b" direction="out" name="success"/>
+      <!-- Marks the room as active for session monitoring (called when a scenario executes or device turns on) -->
+    </method>
+
     <!-- Signals -->
     <signal name="AuthStatusChanged">
       <arg type="i" name="newStatus"/>
@@ -42,6 +47,12 @@
     <signal name="AuthenticationFailed">
       <arg type="s" name="reason"/>
       <!-- Emitted when authentication fails -->
+    </signal>
+
+    <signal name="RoomMonitorAlert">
+      <arg type="s" name="alertType"/>
+      <arg type="s" name="payloadJson"/>
+      <!-- Emitted when a room monitoring condition triggers (ROOM_USAGE_OVERRUN, OUT_OF_SCHOOL_HOURS) -->
     </signal>
   </interface>
 </node>

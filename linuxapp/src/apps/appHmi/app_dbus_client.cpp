@@ -158,6 +158,15 @@ QString AppDbusCli::getAuthenticatedLecturer() {
     return result.toString();
 }
 
+/** Marks the room as active by calling auth.SetRoomActive() over D-Bus. */
+bool AppDbusCli::setRoomActive() {
+    if (!m_authInterface || !m_authInterface->isValid()) {
+        return false;
+    }
+    QDBusReply<bool> reply = m_authInterface->call("SetRoomActive");
+    return reply.isValid() && reply.value();
+}
+
 // === Scenario Engine Methods ===
 
 /** Sends a request to start the given scenario and updates the cached current scenario on success. */
@@ -496,6 +505,8 @@ bool AppDbusCli::setupSignalConnections() {
                       "AuthStatusChanged", SLOT(onAuthStatusChanged(int)));
         connectSignal("com.sps.auth", "/com/sps/auth", "com.sps.auth",
                       "LecturerAuthenticated", SLOT(onLecturerAuthenticated(QString,qlonglong)));
+        connectSignal("com.sps.auth", "/com/sps/auth", "com.sps.auth",
+                      "RoomMonitorAlert", SLOT(onRoomMonitorAlert(QString,QString)));
     }
 
     // Scenario engine signals
@@ -675,6 +686,47 @@ void AppDbusCli::onCommandError(uchar cmdId, uchar errorCode) {
     logError("AppDbusCli", QString("Command error: 0x%1 - 0x%2")
         .arg(cmdId, 2, 16, QChar('0')).arg(errorCode, 2, 16, QChar('0')));
     emit commandError(cmdId, errorCode);
+}
+
+/** Handles RoomMonitorAlert from the auth service: forwards to QML and publishes MQTT alert. */
+void AppDbusCli::onRoomMonitorAlert(const QString& alertType, const QString& payloadJson) {
+    logInfo("AppDbusCli", QString("Room monitor alert: %1").arg(alertType));
+
+    // Forward to QML for warning banner display
+    emit roomMonitorAlert(alertType, payloadJson);
+
+    // Publish alert to MQTT via NetworkManager
+    if (!m_netMgrInterface || !m_netMgrInterface->isValid()) {
+        logWarning("AppDbusCli", "NetworkManager not available - alert not published to MQTT");
+        return;
+    }
+
+    // Get room ID from NetworkManager
+    QDBusReply<QString> roomReply = m_netMgrInterface->call("GetRoomId");
+    QString roomId = roomReply.isValid() ? roomReply.value() : "unknown";
+
+    // Augment payload with room_id
+    QJsonDocument doc = QJsonDocument::fromJson(payloadJson.toUtf8());
+    if (!doc.isObject()) {
+        logError("AppDbusCli", "Invalid JSON payload in RoomMonitorAlert");
+        return;
+    }
+
+    QJsonObject payload = doc.object();
+    payload["room_id"] = roomId;
+    QByteArray jsonBytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+
+    // Publish to sps/{roomId}/event/alert
+    QString topic = QString("sps/%1/event/alert").arg(roomId);
+    QVariantList args;
+    args << topic << jsonBytes << 1;
+
+    QDBusMessage reply = m_netMgrInterface->callWithArgumentList(QDBus::Block, "PublishEvent", args);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        logWarning("AppDbusCli", QString("Failed to publish alert to MQTT: %1").arg(reply.errorMessage()));
+    } else {
+        logInfo("AppDbusCli", QString("Published %1 alert to MQTT topic %2").arg(alertType, topic));
+    }
 }
 
 #include "moc_app_dbus_client.cpp"

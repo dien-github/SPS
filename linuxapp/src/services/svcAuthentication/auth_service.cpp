@@ -6,20 +6,25 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFile>
+#include <QTime>
 
 /** Constructs the auth service, loads config paths, and sets up internal timers. */
 AuthService::AuthService(QObject* parent)
     : SpsServiceBase("com.sps.auth", "/com/sps/auth", parent),
-      m_lockTimeoutMs(300000),  // 5 minutes default
+      m_lockTimeoutMs(300000),  // 5 minutes default (kept for backward compat)
       m_databasePath(SPS::Runtime::configFile("SPS_LECTURERS_FILE", "lecturers.json")),
+      m_schoolHoursPath(SPS::Runtime::configFile("SPS_SCHOOL_HOURS_FILE", "school_hours.json")),
       m_status(LOCKED),
       m_totalAuthAttempts(0),
       m_successfulAuths(0),
-      m_failedAuths(0) {
+      m_failedAuths(0),
+      m_roomActive(false),
+      m_alertOverrunSent(false),
+      m_alertOutOfHoursSent(false) {
 
-    // Setup auto-lock timer
-    connect(&m_autoLockTimer, &QTimer::timeout, this, &AuthService::onLockTimeout);
-    m_autoLockTimer.setSingleShot(true);
+    // Setup monitor timer (periodic check for room usage conditions)
+    connect(&m_monitorTimer, &QTimer::timeout, this, &AuthService::onMonitorTimer);
+    m_monitorTimer.setInterval(MONITOR_INTERVAL_MS);
 
     // Setup debounce timer (prevent duplicate RFID reads)
     connect(&m_debounceTimer, &QTimer::timeout, this, [this]() {
@@ -46,6 +51,9 @@ bool AuthService::initialize() {
 
     logInfo(QString("Loaded %1 lecturers").arg(m_lecturers.size()));
 
+    // Load school hours config
+    loadSchoolHours();
+
     // Register D-Bus service and object
     if (!registerService()) {
         logError("Failed to register D-Bus service");
@@ -67,6 +75,7 @@ void AuthService::shutdown() {
     logInfo("Shutting down authentication service...");
 
     m_autoLockTimer.stop();
+    m_monitorTimer.stop();
     m_debounceTimer.stop();
 
     if (m_status != LOCKED) {
@@ -161,8 +170,10 @@ bool AuthService::UnlockScreen(const QString& rfidData) {
     logInfo(QString("Screen unlocked for: %1").arg(lecturer.name));
     emit LecturerAuthenticated(lecturer.name, m_unlockedAt.toMSecsSinceEpoch());
 
-    // Start auto-lock timer
-    startAutoLockTimer();
+    // Start room monitoring session
+    resetRoomMonitoring();
+    m_monitorTimer.start(MONITOR_INTERVAL_MS);
+    logInfo(QString("Room monitoring started - unlock time: %1").arg(m_unlockedAt.toString(Qt::ISODate)));
 
     return true;
 }
@@ -176,9 +187,11 @@ bool AuthService::LockScreen() {
     }
 
     cancelAutoLockTimer();
+    m_monitorTimer.stop();
     setAuthStatus(LOCKED);
     m_currentLecturer = Lecturer();
     m_lockedAt = QDateTime::currentDateTime();
+    resetRoomMonitoring();
 
     logInfo("Screen locked");
 
@@ -206,6 +219,174 @@ void AuthService::onRfidRead(const QString& rfidData) {
 void AuthService::onLockTimeout() {
     logInfo("Auto-lock timeout triggered");
     LockScreen();
+}
+
+/** D-Bus callable: marks the room active when a scenario executes or device turns on. */
+bool AuthService::SetRoomActive() {
+    if (m_status != UNLOCKED) {
+        logDebug("SetRoomActive ignored - screen not unlocked");
+        return false;
+    }
+    if (!m_roomActive) {
+        m_roomActive = true;
+        m_activeStartTime = QDateTime::currentDateTime();
+        logInfo(QString("Room activated at %1").arg(m_activeStartTime.toString(Qt::ISODate)));
+    }
+    return true;
+}
+
+/** Periodically checks room usage conditions and publishes alerts when triggered. */
+void AuthService::onMonitorTimer() {
+    if (m_status != UNLOCKED) {
+        m_monitorTimer.stop();
+        return;
+    }
+
+    QDateTime now = QDateTime::currentDateTime();
+    int elapsedMinutes = 0;
+    if (m_roomActive) {
+        elapsedMinutes = static_cast<int>(m_activeStartTime.secsTo(now) / 60);
+    } else {
+        elapsedMinutes = static_cast<int>(m_unlockedAt.secsTo(now) / 60);
+    }
+
+    // Check 1: Room usage exceeds maximum duration
+    if (m_roomActive && !m_alertOverrunSent && elapsedMinutes >= MAX_ROOM_USAGE_MINUTES) {
+        publishRoomAlert("ROOM_USAGE_OVERRUN",
+            QString("Room usage exceeded %1 minutes").arg(MAX_ROOM_USAGE_MINUTES),
+            elapsedMinutes);
+        m_alertOverrunSent = true;
+    }
+
+    // Check 2: Current time is outside school operating hours
+    if (!m_alertOutOfHoursSent && !isWithinSchoolHours()) {
+        publishRoomAlert("OUT_OF_SCHOOL_HOURS",
+            "Current time is outside configured school operating hours",
+            elapsedMinutes);
+        m_alertOutOfHoursSent = true;
+    }
+}
+
+/** Loads school hours from the JSON config file. Falls back to defaults if unavailable. */
+void AuthService::loadSchoolHours() {
+    QFile file(m_schoolHoursPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        logWarning(QString("Cannot open school hours config: %1 - using defaults").arg(m_schoolHoursPath));
+        // Default: weekdays 07:00-18:00, no weekend hours
+        for (int d = 1; d <= 5; ++d) {
+            m_schoolHours[d] = {7, 0, 18, 0};
+        }
+        return;
+    }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (!doc.isObject()) {
+        logWarning("School hours config is not a JSON object - using defaults");
+        for (int d = 1; d <= 5; ++d) {
+            m_schoolHours[d] = {7, 0, 18, 0};
+        }
+        return;
+    }
+
+    QJsonObject root = doc.object();
+    QJsonObject hours = root["school_hours"].toObject();
+    if (hours.isEmpty()) {
+        logWarning("No school_hours key found in config - using defaults");
+        for (int d = 1; d <= 5; ++d) {
+            m_schoolHours[d] = {7, 0, 18, 0};
+        }
+        return;
+    }
+
+    QMap<QString, int> dayMap;
+    dayMap["monday"] = 1;
+    dayMap["tuesday"] = 2;
+    dayMap["wednesday"] = 3;
+    dayMap["thursday"] = 4;
+    dayMap["friday"] = 5;
+    dayMap["saturday"] = 6;
+    dayMap["sunday"] = 7;
+
+    for (auto it = dayMap.constBegin(); it != dayMap.constEnd(); ++it) {
+        QJsonValue dayVal = hours[it.key()];
+        if (!dayVal.isObject()) continue;
+
+        QJsonObject dayObj = dayVal.toObject();
+        SchoolDayHours h;
+
+        QString startStr = dayObj["start"].toString("07:00");
+        QString endStr = dayObj["end"].toString("18:00");
+
+        QStringList startParts = startStr.split(":");
+        if (startParts.size() == 2) {
+            h.startHour = startParts[0].toInt();
+            h.startMinute = startParts[1].toInt();
+        }
+
+        QStringList endParts = endStr.split(":");
+        if (endParts.size() == 2) {
+            h.endHour = endParts[0].toInt();
+            h.endMinute = endParts[1].toInt();
+        }
+
+        m_schoolHours[it.value()] = h;
+    }
+
+    logInfo(QString("Loaded school hours for %1 days").arg(m_schoolHours.size()));
+}
+
+/** Returns true if the current time falls within configured school hours for today. */
+bool AuthService::isWithinSchoolHours() const {
+    QDateTime now = QDateTime::currentDateTime();
+    int dayOfWeek = now.date().dayOfWeek(); // Qt: Mon=1, Sun=7
+
+    auto it = m_schoolHours.find(dayOfWeek);
+    if (it == m_schoolHours.end()) {
+        return true;
+    }
+
+    const SchoolDayHours& hours = it.value();
+    int nowMinutes = QTime::currentTime().hour() * 60 + QTime::currentTime().minute();
+    int startMinutes = hours.startHour * 60 + hours.startMinute;
+    int endMinutes = hours.endHour * 60 + hours.endMinute;
+
+    // If start time equals end time, no school this day
+    if (startMinutes == endMinutes) {
+        return false;
+    }
+
+    return nowMinutes >= startMinutes && nowMinutes < endMinutes;
+}
+
+/** Builds the alert payload and emits RoomMonitorAlert to the HMI. */
+void AuthService::publishRoomAlert(const QString& alertType, const QString& reason, int elapsedMinutes) {
+    QJsonObject payload;
+    payload["alert_type"] = alertType;
+    payload["lecturer_id"] = m_currentLecturer.id;
+    payload["lecturer_name"] = m_currentLecturer.name;
+    payload["unlock_time"] = m_unlockedAt.toString(Qt::ISODate);
+    payload["active_start_time"] = m_roomActive ? m_activeStartTime.toString(Qt::ISODate) : "";
+    payload["elapsed_minutes"] = elapsedMinutes;
+    payload["current_time"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    payload["reason"] = reason;
+
+    QJsonDocument doc(payload);
+    QString payloadStr = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+
+    logInfo(QString("Room monitor alert: %1 - %2 (elapsed: %3 min)")
+        .arg(alertType, reason).arg(elapsedMinutes));
+    emit RoomMonitorAlert(alertType, payloadStr);
+}
+
+/** Resets all room monitoring state (called on lock or when session ends). */
+void AuthService::resetRoomMonitoring() {
+    m_roomActive = false;
+    m_activeStartTime = QDateTime();
+    m_alertOverrunSent = false;
+    m_alertOutOfHoursSent = false;
 }
 
 /** Slot: logs when the RFID reader hardware connects. */

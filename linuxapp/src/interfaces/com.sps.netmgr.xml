@@ -60,6 +60,16 @@
       <!-- Request OTA update check from server -->
     </method>
 
+    <method name="IsPcControlEnabled">
+      <arg type="b" direction="out" name="enabled"/>
+      <!-- Returns whether classroom PC control / Wake-on-LAN is enabled -->
+    </method>
+
+    <method name="GetPcMacAddress">
+      <arg type="s" direction="out" name="macAddress"/>
+      <!-- Returns configured PC MAC address for Wake-on-LAN -->
+    </method>
+
     <!-- Signals -->
     <signal name="NetworkConnected">
       <arg type="s" name="ipAddress"/>

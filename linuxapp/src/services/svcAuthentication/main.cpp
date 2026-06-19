@@ -4,6 +4,7 @@
 #include "rfid_reader.h"
 #include "../common/sps_logger.h"
 
+/** Entry point: initializes logger, creates AuthService and RfidReader, registers D-Bus, and runs the event loop. */
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
 
@@ -54,7 +55,7 @@ int main(int argc, char *argv[]) {
     // Register service object
     if (!dbus.registerObject("/com/sps/auth", &service,
 			     QDBusConnection::ExportScriptableSlots |
-			     QDBusConnection::ExportScriptableSignals)) {
+			     QDBusConnection::ExportAllSignals)) {
         Logger::instance().error("svcAuthentication", "Failed to register D-Bus object");
         return 1;
     }

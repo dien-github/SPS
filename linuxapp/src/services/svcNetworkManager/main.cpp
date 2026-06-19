@@ -3,6 +3,7 @@
 #include "network_manager.h"
 #include "../common/sps_logger.h"
 
+/** Entry point: initializes the logger, creates and starts the NetworkManager, and registers it on D-Bus. */
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
 
@@ -29,8 +30,8 @@ int main(int argc, char *argv[]) {
 
     // Register service object
     if (!dbus.registerObject("/com/sps/netmgr", &netMgr,
-          	             QDBusConnection::ExportScriptableSlots |
-                             QDBusConnection::ExportScriptableSignals)) {
+                               QDBusConnection::ExportScriptableSlots |
+                               QDBusConnection::ExportAllSignals)) {
         Logger::instance().error("svcNetworkManager", "Failed to register D-Bus object");
         return 1;
     }

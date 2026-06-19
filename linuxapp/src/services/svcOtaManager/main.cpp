@@ -3,6 +3,7 @@
 #include "ota_manager.h"
 #include "../common/sps_logger.h"
 
+/** Entry point. Initializes logger, creates OtaManager, registers on D-Bus, and runs the event loop. */
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
 
@@ -30,7 +31,7 @@ int main(int argc, char *argv[]) {
     // Register service object
     if (!dbus.registerObject("/com/sps/otamanager", &otaMgr,
                              QDBusConnection::ExportScriptableSlots |
-                             QDBusConnection::ExportScriptableSignals)) {
+                             QDBusConnection::ExportAllSignals)) {
         Logger::instance().error("svcOtaManager", "Failed to register D-Bus object");
         return 1;
     }

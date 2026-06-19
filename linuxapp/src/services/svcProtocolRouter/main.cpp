@@ -3,6 +3,7 @@
 #include "protocol_router.h"
 #include "../common/sps_logger.h"
 
+/** Application entry point. Sets up logging, creates the ProtocolRouter, registers D-Bus, and runs the event loop. */
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
 
@@ -30,7 +31,7 @@ int main(int argc, char *argv[]) {
     // Register service object
     if (!dbus.registerObject("/com/sps/router", &router,
 			     QDBusConnection::ExportScriptableSlots |
-                             QDBusConnection::ExportScriptableSignals)) {
+                             QDBusConnection::ExportAllSignals)) {
         Logger::instance().error("svcProtocolRouter", "Failed to register D-Bus object");
         return 1;
     }

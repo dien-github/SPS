@@ -10,11 +10,17 @@
 #include <QProcess>
 #include <QRegularExpression>
 
+/** Creates the Network Manager, initializes member defaults, and logs creation. */
 NetworkManager::NetworkManager(QObject* parent)
     : SpsServiceBase("com.sps.netmgr", "/com/sps/netmgr", parent),
+      m_mqttBroker("localhost"),
       m_mqttPort(1883),
       m_deviceId("sps-pi-001"),
       m_configPath(SPS::Runtime::configFile("SPS_CONFIG_FILE", "config.json")),
+      m_pcControlEnabled(false),
+      m_pcMacAddress(""),
+      m_wolBroadcastAddress("255.255.255.255"),
+      m_wolPort(9),
       m_mqttClient(nullptr),
       m_mqttConnected(false),
       m_mqttReconnectCount(0),
@@ -28,11 +34,12 @@ NetworkManager::NetworkManager(QObject* parent)
     logInfo("Network Manager service created");
 }
 
+/** Calls shutdown() to cleanly stop the service on destruction. */
 NetworkManager::~NetworkManager() {
     shutdown();
 }
 
-// Initialize service
+/** Creates the MQTT client, sets up timers, loads config, and registers D-Bus. */
 bool NetworkManager::initialize() {
     logInfo("Initializing Network Manager service...");
 
@@ -70,6 +77,10 @@ bool NetworkManager::initialize() {
             m_mqttPort = config["mqtt_port"].toInt(1883);
             m_roomId = config["room_id"].toString("room-001");
             m_deviceId = config["device_id"].toString("sps-pi-001");
+            m_pcControlEnabled = config["enable_pc_control"].toBool(false);
+            m_pcMacAddress = config["pc_mac"].toString();
+            m_wolBroadcastAddress = config["wol_broadcast"].toString("255.255.255.255");
+            m_wolPort = config["wol_port"].toInt(9);
         }
     }
 
@@ -77,6 +88,10 @@ bool NetworkManager::initialize() {
     m_pcMacAddress = SPS::Runtime::envString("SPS_PC_MAC", m_pcMacAddress);
     m_wolBroadcastAddress = SPS::Runtime::envString("SPS_WOL_BROADCAST", m_wolBroadcastAddress);
     m_wolPort = SPS::Runtime::envInt("SPS_WOL_PORT", m_wolPort);
+
+    logInfo(QString("Configuration loaded: broker=%1:%2, roomId=%3, deviceId=%4, pcControl=%5")
+        .arg(m_mqttBroker).arg(m_mqttPort).arg(m_roomId).arg(m_deviceId)
+        .arg(m_pcControlEnabled ? "enabled" : "disabled"));
 
     // Register D-Bus service
     if (!registerService()) {
@@ -90,7 +105,7 @@ bool NetworkManager::initialize() {
     return true;
 }
 
-// Shutdown service
+/** Stops all timers, disconnects MQTT, and calls the base shutdown. */
 void NetworkManager::shutdown() {
     logInfo("Shutting down Network Manager service...");
 
@@ -105,7 +120,7 @@ void NetworkManager::shutdown() {
     SpsServiceBase::shutdown();
 }
 
-// Get service status
+/** Returns a formatted string with MQTT, network, and message statistics. */
 QString NetworkManager::getStatus() const {
     return QString("Network Status: MQTT=%1, Network=%2 | Pub=%3, Recv=%4, Errors=%5")
         .arg(m_mqttConnected ? "Connected" : "Disconnected")
@@ -113,7 +128,7 @@ QString NetworkManager::getStatus() const {
         .arg(m_messagesPublished).arg(m_messagesReceived).arg(m_mqttErrors);
 }
 
-// Connect to MQTT broker
+/** Stores the broker address and initiates an MQTT client connection. */
 bool NetworkManager::connectToMqtt(const QString& broker, int port) {
     m_mqttBroker = broker;
     m_mqttPort = port;
@@ -133,7 +148,7 @@ bool NetworkManager::connectToMqtt(const QString& broker, int port) {
     return true;
 }
 
-// Subscribe to topic
+/** Subscribes to an MQTT topic and tracks it in the local subscription list. */
 bool NetworkManager::subscribeTopic(const QString& topic, int qos) {
     if (!m_mqttClient || !m_mqttConnected) {
         logWarning("MQTT not connected, cannot subscribe");
@@ -147,7 +162,7 @@ bool NetworkManager::subscribeTopic(const QString& topic, int qos) {
     return m_mqttClient->subscribe(topic, qos);
 }
 
-// Publish device status
+/** Publishes a device status JSON payload to the room's status topic. */
 bool NetworkManager::publishStatus(const QString& roomId, const QString& deviceStatus) {
     if (!m_mqttClient || !m_mqttConnected) {
         logWarning("MQTT not connected, cannot publish");
@@ -172,7 +187,7 @@ bool NetworkManager::publishStatus(const QString& roomId, const QString& deviceS
     return result;
 }
 
-// Publish event
+/** Publishes a JSON event (with device_id and timestamp) to the room's event topic. */
 bool NetworkManager::publishEvent(const QString& roomId, const QString& eventType, const QJsonObject& eventData) {
     if (!m_mqttClient || !m_mqttConnected) {
         logWarning("MQTT not connected, cannot publish");
@@ -200,7 +215,7 @@ bool NetworkManager::publishEvent(const QString& roomId, const QString& eventTyp
     return result;
 }
 
-// Publish OTA progress
+/** Publishes OTA progress percentage and status string for a room. */
 bool NetworkManager::publishOtaProgress(const QString& roomId, int percentage, const QString& status) {
     if (!m_mqttClient || !m_mqttConnected) {
         return false;
@@ -218,15 +233,24 @@ bool NetworkManager::publishOtaProgress(const QString& roomId, int percentage, c
     return m_mqttClient->publish(topic, doc.toJson(), 1, false);
 }
 
-// Broadcast Wake-on-LAN packet
+/** Constructs and sends a WoL magic packet over UDP to wake the target PC. */
 bool NetworkManager::broadcastWoL(const QString& macAddress, const QString& broadcastAddr, int port) {
+    if (!m_pcControlEnabled) {
+        logWarning("Wake-on-LAN skipped because PC control is disabled by config");
+        return false;
+    }
+
     if (!m_wolSocket) {
         logError("WoL socket not initialized");
         return false;
     }
 
+    const QString targetMac = macAddress.isEmpty() ? m_pcMacAddress : macAddress;
+    const QString targetBroadcast = broadcastAddr.isEmpty() ? m_wolBroadcastAddress : broadcastAddr;
+    const int targetPort = port > 0 ? port : m_wolPort;
+
     // Parse MAC address
-    QStringList parts = macAddress.split(":");
+    QStringList parts = targetMac.split(":");
     if (parts.size() != 6) {
         logError("Invalid MAC address format");
         return false;
@@ -250,19 +274,19 @@ bool NetworkManager::broadcastWoL(const QString& macAddress, const QString& broa
     }
 
     // Send broadcast packet
-    QHostAddress broadcast(broadcastAddr);
-    qint64 bytesSent = m_wolSocket->writeDatagram(magicPacket, broadcast, port);
+    QHostAddress broadcast(targetBroadcast);
+    qint64 bytesSent = m_wolSocket->writeDatagram(magicPacket, broadcast, targetPort);
 
     if (bytesSent != magicPacket.size()) {
         logError(QString("Failed to send WoL packet (sent %1/%2 bytes)").arg(bytesSent).arg(magicPacket.size()));
         return false;
     }
 
-    logInfo(QString("WoL packet sent to %1 on %2:%3").arg(macAddress, broadcastAddr).arg(port));
+    logInfo(QString("WoL packet sent to %1 on %2:%3").arg(targetMac, targetBroadcast).arg(targetPort));
     return true;
 }
 
-// Check network connectivity
+/** Pings a remote host and updates the internal network connectivity state. */
 bool NetworkManager::checkNetworkConnectivity(const QString& host, int timeout) {
     // Use ping command to check connectivity
     QProcess ping;
@@ -285,39 +309,62 @@ bool NetworkManager::checkNetworkConnectivity(const QString& host, int timeout) 
     return connected;
 }
 
-// Getters
+/** Returns "CONNECTED" or "DISCONNECTED" based on MQTT state. */
 QString NetworkManager::getMqttStatus() const {
     return m_mqttConnected ? "CONNECTED" : "DISCONNECTED";
 }
 
+/** Returns the configured MQTT broker hostname. */
 QString NetworkManager::getMqttBroker() const {
     return m_mqttBroker;
 }
 
+/** Returns the configured MQTT broker port. */
 int NetworkManager::getMqttPort() const {
     return m_mqttPort;
 }
 
+/** Returns whether the network was last detected as reachable. */
 bool NetworkManager::isNetworkConnected() const {
     return m_networkConnected;
 }
 
-// D-Bus Method: GetMqttStatus
+/** Returns whether PC control (WoL) is enabled. */
+bool NetworkManager::isPcControlEnabled() const {
+    return m_pcControlEnabled;
+}
+
+/** Returns the MAC address stored for Wake-on-LAN. */
+QString NetworkManager::getPcMacAddress() const {
+    return m_pcMacAddress;
+}
+
+/** Returns the broadcast address used for Wake-on-LAN packets. */
+QString NetworkManager::getWolBroadcastAddress() const {
+    return m_wolBroadcastAddress;
+}
+
+/** Returns the UDP port used for Wake-on-LAN packets. */
+int NetworkManager::getWolPort() const {
+    return m_wolPort;
+}
+
+/** D-Bus: Delegates to getMqttStatus(). */
 QString NetworkManager::GetMqttStatus() const {
     return getMqttStatus();
 }
 
-// D-Bus Method: GetNetworkStatus
+/** D-Bus: Returns "ONLINE" or "OFFLINE" based on network state. */
 QString NetworkManager::GetNetworkStatus() const {
     return m_networkConnected ? "ONLINE" : "OFFLINE";
 }
 
-// D-Bus Method: ConnectToMqtt
+/** D-Bus: Delegates to connectToMqtt(). */
 bool NetworkManager::ConnectToMqtt(const QString& broker, int port) {
     return connectToMqtt(broker, port);
 }
 
-// D-Bus Method: DisconnectFromMqtt
+/** D-Bus: Disconnects from the MQTT broker if the client exists. */
 bool NetworkManager::DisconnectFromMqtt() {
     if (!m_mqttClient) {
         return false;
@@ -327,7 +374,7 @@ bool NetworkManager::DisconnectFromMqtt() {
     return true;
 }
 
-// D-Bus Method: PublishDeviceStatus
+/** D-Bus: Builds an event with device ID and status, then publishes it. */
 bool NetworkManager::PublishDeviceStatus(const QString& roomId, const QString& deviceId, const QString& status) {
     QJsonObject eventData;
     eventData["device_id"] = deviceId;
@@ -335,7 +382,7 @@ bool NetworkManager::PublishDeviceStatus(const QString& roomId, const QString& d
     return publishEvent(roomId, "status", eventData);
 }
 
-// D-Bus Method: PublishEvent(topic, payload, qos)
+/** D-Bus: Publishes a raw payload directly to the given MQTT topic. */
 bool NetworkManager::PublishEvent(const QString& topic, const QByteArray& payload, int qos) {
     if (!m_mqttClient || !m_mqttConnected) {
         logWarning("MQTT not connected, cannot publish");
@@ -351,7 +398,7 @@ bool NetworkManager::PublishEvent(const QString& topic, const QByteArray& payloa
     return result;
 }
 
-// D-Bus Method: PublishEvent
+/** D-Bus: Parses a JSON string and publishes it as an event for the room. */
 bool NetworkManager::PublishEvent(const QString& roomId, const QString& eventType, const QString& eventJson) {
     QJsonDocument doc = QJsonDocument::fromJson(eventJson.toLatin1());
     if (!doc.isObject()) {
@@ -362,17 +409,21 @@ bool NetworkManager::PublishEvent(const QString& roomId, const QString& eventTyp
     return publishEvent(roomId, eventType, doc.object());
 }
 
-// D-Bus Method: SendWoL
+/** Compatibility: Delegates to broadcastWoL() using stored broadcast and port. */
 bool NetworkManager::SendWoL(const QString& macAddress) {
-    return broadcastWoL(macAddress);
+    return broadcastWoL(macAddress.isEmpty() ? m_pcMacAddress : macAddress,
+                        m_wolBroadcastAddress,
+                        m_wolPort);
 }
 
-// D-Bus Method: SendWakeOnLAN
+/** D-Bus: Delegates to broadcastWoL() with explicit MAC and broadcast address. */
 bool NetworkManager::SendWakeOnLAN(const QString& macAddress, const QString& broadcastAddr) {
-    return broadcastWoL(macAddress, broadcastAddr);
+    return broadcastWoL(macAddress.isEmpty() ? m_pcMacAddress : macAddress,
+                        broadcastAddr.isEmpty() ? m_wolBroadcastAddress : broadcastAddr,
+                        m_wolPort);
 }
 
-// D-Bus Method: SyncLecturerList
+/** D-Bus: Publishes a sync_lecturer_list request to the MQTT command topic. */
 bool NetworkManager::SyncLecturerList() {
     if (!m_mqttClient || !m_mqttConnected) {
         logWarning("MQTT not connected, cannot request lecturer sync");
@@ -395,7 +446,7 @@ bool NetworkManager::SyncLecturerList() {
     return result;
 }
 
-// D-Bus Method: GetConnectionDetails
+/** D-Bus: Returns the local IP address and fills gateway and DNS references. */
 QString NetworkManager::GetConnectionDetails(QString& gateway, QString& dns) const {
     QString ipAddress;
 
@@ -445,7 +496,7 @@ QString NetworkManager::GetConnectionDetails(QString& gateway, QString& dns) con
     return ipAddress;
 }
 
-// D-Bus Method: RequestOTAUpdate
+/** D-Bus: Publishes a request_ota_update message for the given firmware version. */
 bool NetworkManager::RequestOTAUpdate(const QString& firmwareVersion) {
     if (!m_mqttClient || !m_mqttConnected) {
         logWarning("MQTT not connected, cannot request OTA update");
@@ -469,19 +520,29 @@ bool NetworkManager::RequestOTAUpdate(const QString& firmwareVersion) {
     return result;
 }
 
-// D-Bus Method: GetRoomId
+/** D-Bus: Delegates to isPcControlEnabled(). */
+bool NetworkManager::IsPcControlEnabled() const {
+    return isPcControlEnabled();
+}
+
+/** D-Bus: Delegates to getPcMacAddress(). */
+QString NetworkManager::GetPcMacAddress() const {
+    return getPcMacAddress();
+}
+
+/** D-Bus: Returns the current room identifier. */
 QString NetworkManager::GetRoomId() const {
     return m_roomId;
 }
 
-// D-Bus Method: SetRoomId
+/** D-Bus: Sets a new room identifier and logs the change. */
 bool NetworkManager::SetRoomId(const QString& roomId) {
     m_roomId = roomId;
     logInfo(QString("Room ID set to: %1").arg(roomId));
     return true;
 }
 
-// Slot: MQTT connected
+/** Sets m_mqttConnected, stops reconnect timer, subscribes to control topics, and publishes "connected". */
 void NetworkManager::onMqttConnected() {
     m_mqttConnected = true;
     m_mqttReconnectCount = 0;
@@ -504,7 +565,7 @@ void NetworkManager::onMqttConnected() {
     publishStatus(m_roomId, "connected");
 }
 
-// Slot: MQTT disconnected
+/** Marks MQTT as disconnected, emits the signal, and starts the reconnect timer. */
 void NetworkManager::onMqttDisconnected() {
     m_mqttConnected = false;
     logWarning("MQTT disconnected");
@@ -514,34 +575,34 @@ void NetworkManager::onMqttDisconnected() {
     m_reconnectTimer.start(5000);
 }
 
-// Slot: MQTT message received
+/** Increments the received counter and routes the message to processTopicMessage(). */
 void NetworkManager::onMqttMessageReceived(const QString& topic, const QByteArray& message) {
     m_messagesReceived++;
     logDebug(QString("Message received on %1").arg(topic));
     processTopicMessage(topic, message);
 }
 
-// Slot: MQTT error
+/** Increments the error counter, logs, and emits the MqttError signal. */
 void NetworkManager::onMqttError(const QString& error) {
     m_mqttErrors++;
     logError(QString("MQTT error: %1").arg(error));
     emit MqttError(error);
 }
 
-// Slot: Check network status
+/** Records the check timestamp and delegates to checkNetworkConnectivity(). */
 void NetworkManager::checkNetworkStatus() {
     m_lastNetworkCheck = QDateTime::currentDateTime();
     checkNetworkConnectivity("8.8.8.8", 5000);
 }
 
-// Slot: Publish heartbeat
+/** Publishes a "heartbeat" status if MQTT is currently connected. */
 void NetworkManager::publishHeartbeat() {
     if (m_mqttConnected) {
         publishStatus(m_roomId, "heartbeat");
     }
 }
 
-// Slot: MQTT reconnect timeout
+/** Attempts to reconnect to the MQTT broker, up to 10 retries. */
 void NetworkManager::onMqttReconnectTimeout() {
     if (!m_mqttConnected && m_mqttReconnectCount < 10) {
         m_mqttReconnectCount++;
@@ -550,13 +611,13 @@ void NetworkManager::onMqttReconnectTimeout() {
     }
 }
 
-// Slot: Auth status changed
+/** Logs the auth status change and publishes it to MQTT. */
 void NetworkManager::onAuthStatusChanged(const QString& status) {
     logDebug(QString("Auth status changed: %1").arg(status));
     publishStatus(m_roomId, status);
 }
 
-// Process incoming MQTT topic message
+/** Parses the JSON message and routes it to the correct command handler based on the topic. */
 void NetworkManager::processTopicMessage(const QString& topic, const QByteArray& message) {
     QJsonDocument doc = QJsonDocument::fromJson(message);
     if (!doc.isObject()) {
@@ -584,27 +645,31 @@ void NetworkManager::processTopicMessage(const QString& topic, const QByteArray&
     }
 }
 
-// Command handlers
+/** Logs the projector command and emits a generic CommandReceived signal. */
 void NetworkManager::handleProjectorCommand(const QString& roomId, const QJsonObject& data) {
     logInfo(QString("Projector command from %1: %2").arg(roomId).arg(data["action"].toString()));
     emit CommandReceived("projector", data);
 }
 
+/** Logs the relay command and emits a generic CommandReceived signal. */
 void NetworkManager::handleRelayCommand(const QString& roomId, const QJsonObject& data) {
     logInfo(QString("Relay command from %1: %2").arg(roomId).arg(data["action"].toString()));
     emit CommandReceived("relay", data);
 }
 
+/** Logs the AC command and emits a generic CommandReceived signal. */
 void NetworkManager::handleAcCommand(const QString& roomId, const QJsonObject& data) {
     logInfo(QString("AC command from %1: %2").arg(roomId).arg(data["action"].toString()));
     emit CommandReceived("ac", data);
 }
 
+/** Logs the sync command and emits the SyncDataReceived signal with the data. */
 void NetworkManager::handleSyncCommand(const QString& roomId, const QJsonObject& syncData) {
     logInfo(QString("Sync command from %1").arg(roomId));
     emit SyncDataReceived(syncData);
 }
 
+/** Logs the OTA command and emits the OtaCommandReceived signal with the firmware URL. */
 void NetworkManager::handleOtaCommand(const QString& roomId, const QJsonObject& otaData) {
     logInfo(QString("OTA command from %1: %2").arg(roomId).arg(otaData["url"].toString()));
     emit OtaCommandReceived(otaData["url"].toString());

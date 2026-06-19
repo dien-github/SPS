@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QFile>
 
+/** Constructs the auth service, loads config paths, and sets up internal timers. */
 AuthService::AuthService(QObject* parent)
     : SpsServiceBase("com.sps.auth", "/com/sps/auth", parent),
       m_lockTimeoutMs(300000),  // 5 minutes default
@@ -29,11 +30,12 @@ AuthService::AuthService(QObject* parent)
     logInfo(QString("Service created: %1").arg(getServiceName()));
 }
 
+/** Destructor - calls shutdown to clean up. */
 AuthService::~AuthService() {
     shutdown();
 }
 
-// Initialize service
+/** Initializes the service: loads lecturer database and registers the D-Bus interface. */
 bool AuthService::initialize() {
     logInfo("Initializing authentication service...");
 
@@ -60,7 +62,7 @@ bool AuthService::initialize() {
     return true;
 }
 
-// Shutdown service
+/** Shuts down the service, stops timers, locks the screen, and calls base shutdown. */
 void AuthService::shutdown() {
     logInfo("Shutting down authentication service...");
 
@@ -75,7 +77,7 @@ void AuthService::shutdown() {
     logInfo("Authentication service shut down");
 }
 
-// Get current auth status
+/** Returns a human-readable summary of the auth service state and statistics. */
 QString AuthService::getStatus() const {
     return QString("Auth Status: %1 | Lecturer: %2 | Attempts: %3/%4")
         .arg(getAuthStatusString())
@@ -84,12 +86,12 @@ QString AuthService::getStatus() const {
         .arg(m_totalAuthAttempts);
 }
 
-// Get auth status as integer (0=LOCKED, 2=UNLOCKED, etc)
+/** Returns the current auth status as an integer (0=LOCKED, 2=UNLOCKED, etc.). */
 int AuthService::getAuthStatus() const {
     return static_cast<int>(m_status);
 }
 
-// Get status as string
+/** Returns the current auth status as a readable string ("LOCKED", "UNLOCKED", etc.). */
 QString AuthService::getAuthStatusString() const {
     switch (m_status) {
         case LOCKED:     return "LOCKED";
@@ -101,23 +103,23 @@ QString AuthService::getAuthStatusString() const {
     }
 }
 
-// Get authenticated lecturer name
+/** Returns the name of the currently authenticated lecturer (may be empty). */
 QString AuthService::getAuthenticatedLecturer() const {
     return m_currentLecturer.name;
 }
 
-// Simulate RFID read (for testing)
+/** Simulates an RFID read by emitting rfidDataReceived and calling onRfidRead. */
 void AuthService::simulateRfidRead(const QString& rfidData) {
     emit rfidDataReceived(rfidData);
     onRfidRead(rfidData);
 }
 
-// D-Bus Method: GetAuthStatus
+/** D-Bus callable: returns the current auth status integer. */
 int AuthService::GetAuthStatus() const {
     return getAuthStatus();
 }
 
-// D-Bus Method: UnlockScreen
+/** D-Bus callable: validates the RFID, authenticates the lecturer, and unlocks the screen. */
 bool AuthService::UnlockScreen(const QString& rfidData) {
     logInfo(QString("Unlock request with RFID: %1").arg(rfidData));
 
@@ -158,7 +160,6 @@ bool AuthService::UnlockScreen(const QString& rfidData) {
 
     logInfo(QString("Screen unlocked for: %1").arg(lecturer.name));
     emit LecturerAuthenticated(lecturer.name, m_unlockedAt.toMSecsSinceEpoch());
-    emit AuthStatusChanged(UNLOCKED);
 
     // Start auto-lock timer
     startAutoLockTimer();
@@ -166,7 +167,7 @@ bool AuthService::UnlockScreen(const QString& rfidData) {
     return true;
 }
 
-// D-Bus Method: LockScreen
+/** D-Bus callable: locks the screen, clears the current lecturer, cancels auto-lock. */
 bool AuthService::LockScreen() {
     logInfo("Lock request");
 
@@ -180,17 +181,16 @@ bool AuthService::LockScreen() {
     m_lockedAt = QDateTime::currentDateTime();
 
     logInfo("Screen locked");
-    emit AuthStatusChanged(LOCKED);
 
     return true;
 }
 
-// D-Bus Method: GetAuthenticatedLecturer
+/** D-Bus callable: returns the name of the currently authenticated lecturer. */
 QString AuthService::GetAuthenticatedLecturer() const {
     return getAuthenticatedLecturer();
 }
 
-// Slot: RFID data received
+/** Slot: processes raw RFID data and attempts to unlock the screen. */
 void AuthService::onRfidRead(const QString& rfidData) {
     logDebug(QString("RFID read: %1").arg(rfidData));
 
@@ -202,29 +202,29 @@ void AuthService::onRfidRead(const QString& rfidData) {
     UnlockScreen(rfidData);
 }
 
-// Slot: Auto-lock timeout
+/** Slot: triggered when the auto-lock timer expires; locks the screen. */
 void AuthService::onLockTimeout() {
     logInfo("Auto-lock timeout triggered");
     LockScreen();
 }
 
-// Slot: RFID reader connected
+/** Slot: logs when the RFID reader hardware connects. */
 void AuthService::onRfidReaderConnected() {
     logInfo("RFID reader connected");
 }
 
-// Slot: RFID reader disconnected
+/** Slot: logs when the RFID reader hardware disconnects. */
 void AuthService::onRfidReaderDisconnected() {
     logWarning("RFID reader disconnected");
 }
 
-// Slot: RFID reader error
+/** Slot: logs the RFID reader error and sets the service to error state. */
 void AuthService::onRfidReaderError(const QString& error) {
     logError(QString("RFID reader error: %1").arg(error));
     setAuthStatus(ERROR);
 }
 
-// Load lecturer database from JSON
+/** Loads lecturer entries from a JSON file; falls back to demo lecturers if file is missing. */
 bool AuthService::loadLecturerDatabase() {
     QFile file(m_databasePath);
 
@@ -256,21 +256,41 @@ bool AuthService::loadLecturerDatabase() {
         }
 
         QJsonObject obj = value.toObject();
-        QString id = obj["id"].toString();
+        QString id = obj["id"].toVariant().toString();
         QString name = obj["name"].toString();
         QString rfid = obj["rfid"].toString();
 
+        if (rfid.isEmpty()) {
+            rfid = obj["code"].toString();
+        }
+        if (rfid.isEmpty()) {
+            rfid = obj["card_id"].toString();
+        }
+
+        const bool authorized = obj.contains("authorized")
+            ? obj["authorized"].toBool(true)
+            : obj["enabled"].toBool(true);
+
         if (!id.isEmpty() && !rfid.isEmpty()) {
             Lecturer lecturer(id, name, rfid);
+            lecturer.authorized = authorized;
             m_lecturers[rfid] = lecturer;
         }
+    }
+
+    if (m_lecturers.isEmpty()) {
+        logWarning("Lecturer database loaded but no valid RFID entries were found; using demo lecturers");
+        m_lecturers["RFID001"] = Lecturer("L001", "Dr. Smith", "RFID001");
+        m_lecturers["RFID002"] = Lecturer("L002", "Prof. Johnson", "RFID002");
+        m_lecturers["RFID003"] = Lecturer("L003", "Dr. Williams", "RFID003");
+        return false;
     }
 
     logInfo(QString("Loaded %1 lecturers from database").arg(m_lecturers.size()));
     return true;
 }
 
-// Verify RFID against database
+/** Looks up an RFID in the database and returns the lecturer if authorized. */
 bool AuthService::verifyLecturerRfid(const QString& rfidData, Lecturer& lecturer) {
     // Normalize RFID data (trim whitespace)
     QString normalizedRfid = rfidData.trimmed();
@@ -290,7 +310,7 @@ bool AuthService::verifyLecturerRfid(const QString& rfidData, Lecturer& lecturer
     return true;
 }
 
-// Check if RFID is valid format
+/** Checks if the RFID string is non-empty, ≤50 chars, and alphanumeric (with _ or -). */
 bool AuthService::isRfidValid(const QString& rfid) const {
     if (rfid.isEmpty() || rfid.length() > 50) {
         return false;
@@ -306,7 +326,7 @@ bool AuthService::isRfidValid(const QString& rfid) const {
     return true;
 }
 
-// Set authentication status
+/** Sets the auth status and emits AuthStatusChanged (no-op if status is unchanged). */
 void AuthService::setAuthStatus(AuthStatus newStatus) {
     if (m_status == newStatus) {
         return;
@@ -317,7 +337,7 @@ void AuthService::setAuthStatus(AuthStatus newStatus) {
     emit AuthStatusChanged(static_cast<int>(newStatus));
 }
 
-// Set error status
+/** Sets the service to error state with the given message and emits AuthenticationFailed. */
 void AuthService::setError(const QString& error) {
     m_lastError = error;
     logError(error);
@@ -325,13 +345,13 @@ void AuthService::setError(const QString& error) {
     emit AuthenticationFailed(error);
 }
 
-// Start auto-lock timer
+/** Starts the auto-lock timer that will trigger onLockTimeout after m_lockTimeoutMs. */
 void AuthService::startAutoLockTimer() {
     m_autoLockTimer.start(m_lockTimeoutMs);
     logDebug(QString("Auto-lock timer started: %1ms").arg(m_lockTimeoutMs));
 }
 
-// Cancel auto-lock timer
+/** Stops the auto-lock timer so the screen will not lock automatically. */
 void AuthService::cancelAutoLockTimer() {
     m_autoLockTimer.stop();
 }

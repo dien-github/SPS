@@ -4,6 +4,7 @@
 #include <QThread>
 #include <QTimer>
 
+/** Constructor. Initializes member variables, connects the retry timer, and logs startup. */
 ProtocolRouter::ProtocolRouter(QObject* parent)
     : SpsServiceBase("com.sps.router", "/com/sps/router", parent),
       m_uartPortName(SPS::Runtime::envString("SPS_UART_PORT", UART::DEFAULT_PORT)),
@@ -29,16 +30,21 @@ ProtocolRouter::ProtocolRouter(QObject* parent)
     logInfo("Protocol Router service created");
 }
 
+/** Destructor. Calls shutdown to stop the service and release resources. */
 ProtocolRouter::~ProtocolRouter() {
     shutdown();
 }
 
-// Initialize service
+/** Initializes the service: creates UART port, connects signals, and registers D-Bus. */
 bool ProtocolRouter::initialize() {
     logInfo("Initializing Protocol Router service...");
 
     // Create UART port
     m_uartPort = new UartPort(this);
+    logInfo(QString("UART config: port=%1, baud=%2, available=[%3]")
+        .arg(m_uartPortName)
+        .arg(UART::BAUDRATE)
+        .arg(UartPort::getAvailablePorts().join(", ")));
 
     // Connect UART signals
     connect(m_uartPort, &UartPort::frameReceived, this, &ProtocolRouter::onFrameReceived);
@@ -63,7 +69,7 @@ bool ProtocolRouter::initialize() {
     return true;
 }
 
-// Shutdown service
+/** Shuts down the service: stops timers, disconnects MCU, and cleans up. */
 void ProtocolRouter::shutdown() {
     logInfo("Shutting down Protocol Router service...");
 
@@ -81,7 +87,7 @@ void ProtocolRouter::shutdown() {
     SpsServiceBase::shutdown();
 }
 
-// Get service status
+/** Returns a human-readable status string with connection and command statistics. */
 QString ProtocolRouter::getStatus() const {
     return QString("Router Status: %1 | Commands: %2/%3/%4 | Retries: %5")
         .arg(getConnectionStatus())
@@ -91,7 +97,7 @@ QString ProtocolRouter::getStatus() const {
         .arg(m_totalRetries);
 }
 
-// Connect to MCU via UART
+/** Opens a UART connection to the MCU on the specified port and sends a heartbeat. */
 bool ProtocolRouter::connectMcu(const QString& portName) {
     m_uartPortName = SPS::Runtime::envString("SPS_UART_PORT", portName);
 
@@ -114,7 +120,7 @@ bool ProtocolRouter::connectMcu(const QString& portName) {
     return true;
 }
 
-// Disconnect from MCU
+/** Closes the MCU connection and clears the command queue. */
 bool ProtocolRouter::disconnectMcu() {
     if (m_uartPort && m_uartPort->isOpen()) {
         m_uartPort->closePort();
@@ -130,12 +136,12 @@ bool ProtocolRouter::disconnectMcu() {
     return true;
 }
 
-// Check if connected
+/** Returns true if the UART port is open and connected. */
 bool ProtocolRouter::isConnected() const {
     return m_isConnected && m_uartPort && m_uartPort->isOpen();
 }
 
-// Get connection status string
+/** Returns the current connection status as a string (CONNECTED/RECONNECTING/DISCONNECTED). */
 QString ProtocolRouter::getConnectionStatus() const {
     if (m_isConnected) {
         return "CONNECTED";
@@ -146,17 +152,17 @@ QString ProtocolRouter::getConnectionStatus() const {
     }
 }
 
-// Get command queue size
+/** Returns the number of commands waiting in the queue. */
 int ProtocolRouter::getCommandQueueSize() const {
     return m_commandQueue.size();
 }
 
-// Get pending command count
+/** Returns 1 if a command is pending acknowledgment, 0 otherwise. */
 int ProtocolRouter::getPendingCommandCount() const {
     return m_commandPending ? 1 : 0;
 }
 
-// D-Bus Method: SendCommand
+/** D-Bus callable. Sends a command to the MCU with the given ID and payload. */
 bool ProtocolRouter::SendCommand(uchar cmdId, const QByteArray& payload) {
     if (!isConnected()) {
         logWarning("Not connected to MCU");
@@ -169,7 +175,7 @@ bool ProtocolRouter::SendCommand(uchar cmdId, const QByteArray& payload) {
     return queueCommand(static_cast<UART::CommandId>(cmdId), cmdPayload, m_defaultRetries);
 }
 
-// D-Bus Method: GetDeviceStatus
+/** D-Bus callable. Queries a device's status and returns the cached value. */
 uchar ProtocolRouter::GetDeviceStatus(uchar deviceId) {
     logDebug(QString("Query device status: 0x%1").arg(deviceId, 2, 16, QChar('0')));
 
@@ -182,12 +188,12 @@ uchar ProtocolRouter::GetDeviceStatus(uchar deviceId) {
     return getCachedDeviceStatus(deviceId);
 }
 
-// D-Bus Method: GetConnectionStatus
+/** D-Bus callable. Returns the current connection status string. */
 QString ProtocolRouter::GetConnectionStatus() const {
     return getConnectionStatus();
 }
 
-// D-Bus Method: ResetConnection
+/** D-Bus callable. Disconnects and reconnects to the MCU. */
 bool ProtocolRouter::ResetConnection() {
     logInfo("Resetting MCU connection...");
     disconnectMcu();
@@ -195,7 +201,7 @@ bool ProtocolRouter::ResetConnection() {
     return connectMcu(m_uartPortName);
 }
 
-// D-Bus Method: StartOTA
+/** D-Bus callable. Initiates an OTA firmware update with the given total size. */
 bool ProtocolRouter::StartOTA(uint firmwareSize) {
     if (!isConnected()) {
         logError("Not connected for OTA");
@@ -223,7 +229,7 @@ bool ProtocolRouter::StartOTA(uint firmwareSize) {
     return true;
 }
 
-// D-Bus Method: SendOTAChunk
+/** D-Bus callable. Sends a single 128-byte OTA data chunk. */
 bool ProtocolRouter::SendOTAChunk(uchar chunkNumber, const QByteArray& chunkData) {
     if (!m_otaInProgress || chunkData.size() != 128) {
         logError(QString("Invalid OTA chunk - size: %1").arg(chunkData.size()));
@@ -243,7 +249,7 @@ bool ProtocolRouter::SendOTAChunk(uchar chunkNumber, const QByteArray& chunkData
     return queueCommand(UART::CommandId::OTA_DATA_CHUNK, payload, 3);
 }
 
-// D-Bus Method: EndOTA
+/** D-Bus callable. Finalizes the OTA update transfer. */
 bool ProtocolRouter::EndOTA() {
     if (!m_otaInProgress) {
         logWarning("OTA not in progress");
@@ -258,6 +264,7 @@ bool ProtocolRouter::EndOTA() {
 
 // D-Bus Methods: Device control convenience methods
 
+/** Turns a light on (true) or off (false). */
 bool ProtocolRouter::ControlLight(uchar lightId, bool on) {
     QByteArray payload;
     payload.append(static_cast<char>(lightId));
@@ -265,6 +272,7 @@ bool ProtocolRouter::ControlLight(uchar lightId, bool on) {
     return SendCommand(static_cast<uchar>(UART::CommandId::LIGHT_CONTROL), payload);
 }
 
+/** Controls a curtain: 0=close, 1=open, 2=stop. */
 bool ProtocolRouter::ControlCurtain(uchar curtainId, uchar action) {
     QByteArray payload;
     payload.append(static_cast<char>(curtainId));
@@ -272,12 +280,14 @@ bool ProtocolRouter::ControlCurtain(uchar curtainId, uchar action) {
     return SendCommand(static_cast<uchar>(UART::CommandId::CURTAIN_CONTROL), payload);
 }
 
+/** Turns the projector on (true) or off (false). */
 bool ProtocolRouter::ControlProjector(bool on) {
     QByteArray payload;
     payload.append(on ? 0x01 : 0x00);
     return SendCommand(static_cast<uchar>(UART::CommandId::PROJECTOR_CONTROL), payload);
 }
 
+/** Turns an air conditioner on (true) or off (false). */
 bool ProtocolRouter::ControlAC(uchar acId, bool on) {
     QByteArray payload;
     payload.append(static_cast<char>(acId));
@@ -287,7 +297,7 @@ bool ProtocolRouter::ControlAC(uchar acId, bool on) {
 
 // ========== Private Methods ==========
 
-// Queue a command for transmission
+/** Adds a command to the transmit queue and starts processing if idle. */
 bool ProtocolRouter::queueCommand(UART::CommandId cmdId, const QByteArray& payload, int maxRetries) {
     if (!isConnected()) {
         logError("Not connected - cannot queue command");
@@ -314,7 +324,7 @@ bool ProtocolRouter::queueCommand(UART::CommandId cmdId, const QByteArray& paylo
     return true;
 }
 
-// Send next command in queue
+/** Transmits the next command from the queue over UART and starts the timeout timer. */
 bool ProtocolRouter::sendPendingCommand() {
     if (m_commandQueue.isEmpty()) {
         m_commandPending = false;
@@ -329,6 +339,7 @@ bool ProtocolRouter::sendPendingCommand() {
     logDebug(QString("Sending command: 0x%1 (size: %2)")
         .arg(static_cast<int>(m_currentCommand.cmdId), 2, 16, QChar('0'))
         .arg(frame.size()));
+    logDebug(QString("UART TX: %1").arg(QString::fromLatin1(frame.toHex(' ').toUpper())));
 
     if (!m_uartPort->sendFrame(frame)) {
         logError("Failed to send frame");
@@ -342,7 +353,7 @@ bool ProtocolRouter::sendPendingCommand() {
     return true;
 }
 
-// Retry a failed command
+/** Retries the current pending command up to maxRetries, then marks it as failed. */
 void ProtocolRouter::retryPendingCommand() {
     if (m_currentCommand.retryCount < m_currentCommand.maxRetries) {
         m_currentCommand.retryCount++;
@@ -363,7 +374,7 @@ void ProtocolRouter::retryPendingCommand() {
     }
 }
 
-// Command succeeded
+/** Marks the current command as successful and processes the next in queue. */
 void ProtocolRouter::commandSucceeded(UART::CommandId cmdId) {
     m_successfulCommands++;
     m_retryTimer.stop();
@@ -374,7 +385,7 @@ void ProtocolRouter::commandSucceeded(UART::CommandId cmdId) {
     processCommandQueue();
 }
 
-// Command failed
+/** Marks the current command as failed and emits a CommandError signal. */
 void ProtocolRouter::commandFailed(UART::CommandId cmdId, const QString& reason) {
     m_failedCommands++;
     m_retryTimer.stop();
@@ -386,7 +397,7 @@ void ProtocolRouter::commandFailed(UART::CommandId cmdId, const QString& reason)
     emit CommandError(static_cast<uchar>(cmdId), 0xFF);
 }
 
-// Process command queue
+/** Sends the next queued command if none is pending and the MCU is connected. */
 void ProtocolRouter::processCommandQueue() {
     if (!isConnected() || m_commandPending) {
         return;
@@ -397,7 +408,7 @@ void ProtocolRouter::processCommandQueue() {
     }
 }
 
-// Handle MCU response frame
+/** Parses and handles an MCU response frame (ACK, NACK, status, presence, etc.). */
 void ProtocolRouter::handleMcuResponse(const UartFrame& frame) {
     UART::CommandId cmdId = frame.getCommandId();
 
@@ -451,13 +462,13 @@ void ProtocolRouter::handleMcuResponse(const UartFrame& frame) {
     }
 }
 
-// Update device status cache
+/** Updates the cached status for a device. Thread-safe. */
 void ProtocolRouter::updateDeviceStatus(uchar deviceId, uchar status) {
     QMutexLocker lock(&m_statusMutex);
     m_deviceStatusCache[deviceId] = status;
 }
 
-// Get cached device status
+/** Returns the cached status for a device, or 0xFF if unknown. Thread-safe. */
 uchar ProtocolRouter::getCachedDeviceStatus(uchar deviceId) const {
     QMutexLocker lock(&m_statusMutex);
     return m_deviceStatusCache.value(deviceId, 0xFF);  // 0xFF = unknown
@@ -465,22 +476,23 @@ uchar ProtocolRouter::getCachedDeviceStatus(uchar deviceId) const {
 
 // ========== Signal Handlers ==========
 
-// Slot: Frame received from UART
+/** Slot. Handles an incoming UART frame by passing it to handleMcuResponse. */
 void ProtocolRouter::onFrameReceived(const UartFrame& frame) {
     logDebug(QString("Frame received: 0x%1, size: %2")
         .arg(static_cast<int>(frame.getCommandId()), 2, 16, QChar('0'))
         .arg(frame.getPayload().size()));
+    logDebug(QString("UART RX: %1").arg(QString::fromLatin1(frame.toByteArray().toHex(' ').toUpper())));
 
     handleMcuResponse(frame);
 }
 
-// Slot: UART port error
+/** Slot. Handles a UART port error and emits ConnectionStatusChanged(ERROR). */
 void ProtocolRouter::onPortError(const QString& error) {
     logError(QString("UART error: %1").arg(error));
     emit ConnectionStatusChanged("ERROR");
 }
 
-// Slot: Connection status changed
+/** Slot. Updates connection state and emits the appropriate status signal. */
 void ProtocolRouter::onConnectionStatusChanged(bool connected) {
     m_isConnected = connected;
 
@@ -495,7 +507,7 @@ void ProtocolRouter::onConnectionStatusChanged(bool connected) {
     }
 }
 
-// Slot: Retry timer timeout
+/** Slot. Called when the retry timer expires; retries or fails the current command. */
 void ProtocolRouter::onRetryTimeout() {
     if (m_commandPending) {
         logWarning("Command timeout - retrying");

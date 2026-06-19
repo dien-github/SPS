@@ -8,6 +8,7 @@
 #include <QDBusConnection>
 #include <QDBusReply>
 
+/** Constructor. Initialises execution context, timers, and counters. */
 ScenarioEngine::ScenarioEngine(QObject* parent)
     : SpsServiceBase("com.sps.engine", "/com/sps/engine", parent),
       m_scenariosPath(SPS::Runtime::configFile("SPS_SCENARIOS_FILE", "scenarios.json")),
@@ -18,36 +19,32 @@ ScenarioEngine::ScenarioEngine(QObject* parent)
       m_totalCommands(0),
       m_autoTriggeredScenarios(0) {
 
-    // Initialize execution context
     m_execution.state = IDLE;
     m_execution.currentCommandIndex = 0;
 
-    // Setup command timer
     connect(&m_commandTimer, &QTimer::timeout, this, &ScenarioEngine::executeNextCommand);
     m_commandTimer.setSingleShot(true);
 
     logInfo("Scenario Engine service created");
 }
 
+/** Destructor. Calls shutdown to clean up all resources. */
 ScenarioEngine::~ScenarioEngine() {
     shutdown();
 }
 
-// Initialize service
+/** Initialises the service: loads scenarios, connects to ProtocolRouter, and registers D-Bus. */
 bool ScenarioEngine::initialize() {
     logInfo("Initializing Scenario Engine service...");
 
-    // Load scenarios from configuration
     if (!loadScenarios(m_scenariosPath)) {
         logWarning("Failed to load scenarios - service will operate with no scenarios");
     }
 
-    // Connect to ProtocolRouter
     if (!connectToRouter()) {
         logWarning("Failed to connect to ProtocolRouter - command execution unavailable");
     }
 
-    // Register D-Bus service
     if (!registerService()) {
         logError("Failed to register D-Bus service");
         return false;
@@ -59,7 +56,7 @@ bool ScenarioEngine::initialize() {
     return true;
 }
 
-// Shutdown service
+/** Stops execution, clears scenarios, and releases D-Bus interfaces. */
 void ScenarioEngine::shutdown() {
     logInfo("Shutting down Scenario Engine service...");
 
@@ -84,7 +81,7 @@ void ScenarioEngine::shutdown() {
     SpsServiceBase::shutdown();
 }
 
-// Get service status
+/** Returns a human-readable status string with engine state and scenario counts. */
 QString ScenarioEngine::getStatus() const {
     QString stateStr;
     switch (m_execution.state) {
@@ -100,7 +97,7 @@ QString ScenarioEngine::getStatus() const {
         .arg(stateStr).arg(m_scenarios.size()).arg(m_scenariosExecuted).arg(m_scenariosFailed);
 }
 
-// Load scenarios from JSON file
+/** Loads scenarios from a JSON file. Falls back to sample scenarios if the file is missing. */
 bool ScenarioEngine::loadScenarios(const QString& scenariosPath) {
     m_scenariosPath = scenariosPath;
 
@@ -108,7 +105,6 @@ bool ScenarioEngine::loadScenarios(const QString& scenariosPath) {
     if (!file.open(QIODevice::ReadOnly)) {
         logWarning(QString("Cannot open scenarios file: %1").arg(scenariosPath));
 
-        // Create sample scenarios for testing
         Scenario startup("scenario-startup", "Startup");
         startup.description = "Turn on lights and projector";
         startup.addCommand(ScenarioCommand(1, SPS::Device::Type::LIGHT, "light-class", SPS::Device::State::ON, 0));
@@ -152,23 +148,43 @@ bool ScenarioEngine::loadScenarios(const QString& scenariosPath) {
         Scenario scenario(id, name);
         scenario.description = description;
 
-        // Load commands
         QJsonArray commands = obj["commands"].toArray();
         for (int i = 0; i < commands.size(); ++i) {
             QJsonObject cmdObj = commands[i].toObject();
             int order = cmdObj["order"].toInt(i);
-            QString deviceType = cmdObj["device_type"].toString();
-            QString deviceId = cmdObj["device_id"].toString();
+            QString deviceType = cmdObj["device_type"].toString().toLower();
+            QString deviceId = cmdObj["device_id"].toVariant().toString();
             int delayMs = cmdObj["delay_ms"].toInt(0);
+            QString targetState = cmdObj["target_state"].toString();
+            if (targetState.isEmpty()) {
+                targetState = cmdObj["state"].toString();
+            }
+            if (targetState.isEmpty()) {
+                targetState = cmdObj["action"].toString();
+            }
+            targetState = targetState.toLower();
 
-            // Map device type string to enum
             SPS::Device::Type type = SPS::Device::Type::UNKNOWN;
             if (deviceType == "light") type = SPS::Device::Type::LIGHT;
             else if (deviceType == "projector") type = SPS::Device::Type::PROJECTOR;
             else if (deviceType == "curtain") type = SPS::Device::Type::CURTAIN;
+            else if (deviceType == "screen") type = SPS::Device::Type::SCREEN;
             else if (deviceType == "ac") type = SPS::Device::Type::AC;
+            else if (deviceType == "relay") type = SPS::Device::Type::RELAY;
 
             SPS::Device::State state = SPS::Device::State::UNKNOWN;
+            if (targetState == "on") state = SPS::Device::State::ON;
+            else if (targetState == "off") state = SPS::Device::State::OFF;
+            else if (targetState == "open") state = SPS::Device::State::OPEN;
+            else if (targetState == "close" || targetState == "closed") state = SPS::Device::State::CLOSED;
+            else if (targetState == "opening") state = SPS::Device::State::OPENING;
+            else if (targetState == "closing") state = SPS::Device::State::CLOSING;
+
+            if (type == SPS::Device::Type::UNKNOWN || state == SPS::Device::State::UNKNOWN) {
+                logWarning(QString("Skipping invalid scenario command: device_type=%1, device_id=%2, state=%3")
+                    .arg(deviceType, deviceId, targetState));
+                continue;
+            }
 
             scenario.addCommand(ScenarioCommand(order, type, deviceId, state, delayMs));
         }
@@ -180,7 +196,7 @@ bool ScenarioEngine::loadScenarios(const QString& scenariosPath) {
     return true;
 }
 
-// Register context trigger
+/** Registers a context-to-scenario mapping so a context event auto-triggers a scenario. */
 bool ScenarioEngine::registerContextTrigger(const QString& context, const QString& scenarioId) {
     if (!m_scenarios.contains(scenarioId)) {
         logWarning(QString("Scenario not found: %1").arg(scenarioId));
@@ -193,12 +209,12 @@ bool ScenarioEngine::registerContextTrigger(const QString& context, const QStrin
     return true;
 }
 
-// Get available scenarios
+/** Returns a list of all available scenario IDs. */
 QStringList ScenarioEngine::getAvailableScenarios() const {
     return m_scenarios.keys();
 }
 
-// Get scenario status
+/** Returns the current execution status (RUNNING, PAUSED, etc.) for the given scenario. */
 QString ScenarioEngine::getScenarioStatus(const QString& scenarioId) const {
     if (m_execution.scenarioId == scenarioId) {
         switch (m_execution.state) {
@@ -212,7 +228,7 @@ QString ScenarioEngine::getScenarioStatus(const QString& scenarioId) const {
     return "IDLE";
 }
 
-// Get scenario description
+/** Returns the description text of the specified scenario. */
 QString ScenarioEngine::getScenarioDescription(const QString& scenarioId) const {
     if (m_scenarios.contains(scenarioId)) {
         return m_scenarios[scenarioId].description;
@@ -220,17 +236,17 @@ QString ScenarioEngine::getScenarioDescription(const QString& scenarioId) const 
     return "";
 }
 
-// D-Bus Method: GetAvailableScenarios
+/** D-Bus callable. Returns a list of all available scenario IDs. */
 QStringList ScenarioEngine::GetAvailableScenarios() const {
     return getAvailableScenarios();
 }
 
-// D-Bus Method: GetEngineStatus
+/** D-Bus callable. Returns the engine status string. */
 QString ScenarioEngine::GetEngineStatus() const {
     return getStatus();
 }
 
-// D-Bus Method: GetScenarioInfo
+/** D-Bus callable. Returns scenario info including description and command count. */
 QString ScenarioEngine::GetScenarioInfo(const QString& scenarioId, QString& description, int& commandCount) const {
     if (!m_scenarios.contains(scenarioId)) {
         description.clear();
@@ -244,7 +260,7 @@ QString ScenarioEngine::GetScenarioInfo(const QString& scenarioId, QString& desc
     return scenario.name;
 }
 
-// D-Bus Method: ExecuteScenario
+/** D-Bus callable. Starts execution of the specified scenario. */
 bool ScenarioEngine::ExecuteScenario(const QString& scenarioId) {
     logInfo(QString("Execute scenario request: %1").arg(scenarioId));
 
@@ -263,12 +279,12 @@ bool ScenarioEngine::ExecuteScenario(const QString& scenarioId) {
     return startExecution(scenarioId);
 }
 
-// D-Bus Method: GetScenarioStatus
+/** D-Bus callable. Returns the execution status of the given scenario. */
 QString ScenarioEngine::GetScenarioStatus(const QString& scenarioId) const {
     return getScenarioStatus(scenarioId);
 }
 
-// D-Bus Method: StopScenario
+/** D-Bus callable. Stops the currently running scenario. */
 bool ScenarioEngine::StopScenario(const QString& scenarioId) {
     if (m_execution.scenarioId != scenarioId) {
         logWarning(QString("Scenario not currently running: %1").arg(scenarioId));
@@ -279,24 +295,21 @@ bool ScenarioEngine::StopScenario(const QString& scenarioId) {
     return true;
 }
 
-// D-Bus Method: ControlDevice
+/** D-Bus callable. Sends a direct control command to a device. */
 bool ScenarioEngine::ControlDevice(uchar deviceId, const QString& action) {
     logInfo(QString("Direct device control: id=%1, action=%2").arg(deviceId).arg(action));
-
-    // TODO: Implement direct device control
-    // This would map action string to state and call sendControlCommand
 
     return true;
 }
 
-// D-Bus Method: RegisterContextTrigger
+/** D-Bus callable. Registers a context trigger for automatic scenario execution. */
 bool ScenarioEngine::RegisterContextTrigger(const QString& context, const QString& scenarioId) {
     return registerContextTrigger(context, scenarioId);
 }
 
 // Private Methods
 
-// Start scenario execution
+/** Starts execution of the specified scenario. Returns false if scenario is not found. */
 bool ScenarioEngine::startExecution(const QString& scenarioId) {
     if (!m_scenarios.contains(scenarioId)) {
         return false;
@@ -313,13 +326,12 @@ bool ScenarioEngine::startExecution(const QString& scenarioId) {
     logInfo(QString("Executing scenario: %1").arg(scenarioId));
     emit ScenarioStarted(scenarioId);
 
-    // Start first command
     executeNextCommand();
 
     return true;
 }
 
-// Stop scenario execution
+/** Stops the currently running scenario with the given reason. */
 void ScenarioEngine::stopExecution(const QString& reason) {
     if (m_execution.state == IDLE) {
         return;
@@ -334,7 +346,7 @@ void ScenarioEngine::stopExecution(const QString& reason) {
     emit ScenarioError(scenarioId, reason);
 }
 
-// Set execution state
+/** Updates the execution state and emits relevant signals. */
 void ScenarioEngine::setExecutionState(ExecutionState newState) {
     m_execution.state = newState;
 
@@ -358,7 +370,7 @@ void ScenarioEngine::setExecutionState(ExecutionState newState) {
     }
 }
 
-// Execute next command in scenario
+/** Executes the next pending command in the current scenario. */
 void ScenarioEngine::executeNextCommand() {
     if (m_execution.state != RUNNING) {
         return;
@@ -387,7 +399,6 @@ void ScenarioEngine::executeNextCommand() {
     emit CommandExecuting(m_execution.scenarioId, m_execution.currentCommandIndex, 
                          QString("Command %1").arg(cmd.order));
 
-    // Execute command
     if (!executeCommand(cmd)) {
         stopExecution("Command execution failed");
         return;
@@ -396,7 +407,6 @@ void ScenarioEngine::executeNextCommand() {
     m_totalCommands++;
     m_execution.currentCommandIndex++;
 
-    // Schedule next command with delay
     int delay = (m_execution.currentCommandIndex < scenario.commands.size()) 
         ? scenario.commands[m_execution.currentCommandIndex].delayMs 
         : 0;
@@ -404,12 +414,12 @@ void ScenarioEngine::executeNextCommand() {
     m_commandTimer.start(delay);
 }
 
-// Execute a single command
+/** Sends a single command to a device through the ProtocolRouter. */
 bool ScenarioEngine::executeCommand(const ScenarioCommand& cmd) {
     return sendControlCommand(cmd.deviceType, cmd.deviceId, cmd.targetState);
 }
 
-// Send control command via ProtocolRouter
+/** Builds and sends a UART control command via the ProtocolRouter D-Bus interface. */
 bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
                                         const QString& deviceId, SPS::Device::State state) {
     if (!m_routerInterface) {
@@ -417,7 +427,6 @@ bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
         return false;
     }
 
-    // Map device type to UART command ID
     SPS::UART::CmdId cmdId;
     switch (deviceType) {
         case SPS::Device::Type::LIGHT:     cmdId = SPS::UART::CmdId::LIGHT_CONTROL; break;
@@ -431,17 +440,14 @@ bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
             return false;
     }
 
-    // Build payload
     QByteArray payload;
 
-    // Devices needing a sub-ID byte before state
     if (deviceType != SPS::Device::Type::PROJECTOR) {
         bool ok = false;
         uchar id = deviceId.toUShort(&ok);
         payload.append(static_cast<char>(ok ? id : 0x01));
     }
 
-    // Map state to control byte
     uchar stateByte;
     switch (state) {
         case SPS::Device::State::ON:
@@ -467,9 +473,8 @@ bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
         .arg(static_cast<int>(state))
         .arg(static_cast<int>(cmdId), 2, 16, QChar('0')));
 
-    // Call ProtocolRouter::SendCommand via D-Bus
     QDBusReply<bool> reply = m_routerInterface->call(
-        "SendCommand", static_cast<uchar>(cmdId), payload);
+        "SendCommand", QVariant::fromValue(static_cast<quint8>(cmdId)), payload);
 
     if (!reply.isValid()) {
         logError(QString("SendCommand D-Bus call failed: %1")
@@ -480,7 +485,7 @@ bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
     return reply.value();
 }
 
-// Connect to ProtocolRouter via D-Bus
+/** Creates and validates the D-Bus interface to the ProtocolRouter service. */
 bool ScenarioEngine::connectToRouter() {
     m_routerInterface = new QDBusInterface("com.sps.router", "/com/sps/router", 
                                            "com.sps.router", 
@@ -495,7 +500,7 @@ bool ScenarioEngine::connectToRouter() {
     return true;
 }
 
-// Call ProtocolRouter method
+/** Calls a method on the ProtocolRouter D-Bus interface with optional arguments. */
 bool ScenarioEngine::callRouterMethod(const QString& method, const QVariant& arg1, const QVariant& arg2) {
     if (!m_routerInterface) {
         return false;
@@ -515,6 +520,7 @@ bool ScenarioEngine::callRouterMethod(const QString& method, const QVariant& arg
 
 // Slot handlers
 
+/** Handles a context event and triggers the associated scenario if registered. */
 void ScenarioEngine::onContextEvent(const QString& context) {
     logDebug(QString("Context event: %1").arg(context));
 
@@ -527,24 +533,29 @@ void ScenarioEngine::onContextEvent(const QString& context) {
     }
 }
 
+/** Called when a scenario step completes; triggers the next command. */
 void ScenarioEngine::onScenarioStepCompleted() {
     executeNextCommand();
 }
 
+/** Handles a command failure by stopping the scenario with an error. */
 void ScenarioEngine::onCommandFailed(const QString& error) {
     logError(QString("Command failed: %1").arg(error));
     stopExecution(error);
 }
 
+/** Handles a command acknowledgment from the ProtocolRouter. */
 void ScenarioEngine::onRouterCommandAck(uchar cmdId) {
     logDebug(QString("Router ACK: 0x%1").arg(cmdId, 2, 16, QChar('0')));
 }
 
+/** Handles a command error from the ProtocolRouter. */
 void ScenarioEngine::onRouterCommandError(uchar cmdId, uchar errorCode) {
     logError(QString("Router error: cmd=0x%1, code=0x%2")
         .arg(cmdId, 2, 16, QChar('0')).arg(errorCode, 2, 16, QChar('0')));
 }
 
+/** Handles presence detection events to trigger context scenarios. */
 void ScenarioEngine::onPresenceDetected(bool present) {
     logDebug(QString("Presence: %1").arg(present ? "Yes" : "No"));
 

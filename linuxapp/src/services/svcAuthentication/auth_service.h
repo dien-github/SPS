@@ -9,63 +9,70 @@
 #include "../common/sps_service_base.h"
 #include "../common/sps_device_models.h"
 
-// Authentication Service
-// Manages lecturer authentication via RFID reader and GPIO
-// Exposes D-Bus interface: com.sps.auth
+/** Manages lecturer authentication via RFID reader and GPIO over D-Bus. */
 class AuthService : public SpsServiceBase {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "com.sps.auth")
 
 public:
+    /** Constructs the auth service and sets up auto-lock and debounce timers. */
     explicit AuthService(QObject* parent = nullptr);
+    /** Destructor - shuts down the service cleanly. */
     ~AuthService();
 
-    // Service lifecycle
+    /** Initializes the service: loads lecturer database and registers D-Bus. */
     bool initialize() override;
+    /** Stops timers, locks the screen, and calls base class shutdown. */
     void shutdown() override;
+    /** Returns a summary string with auth status, lecturer, and statistics. */
     QString getStatus() const override;
 
-    // Authentication state
+    /** Returns the current auth status as an integer. */
     int getAuthStatus() const;
+    /** Returns the current auth status as a readable string (e.g. "LOCKED"). */
     QString getAuthStatusString() const;
+    /** Returns the name of the currently authenticated lecturer. */
     QString getAuthenticatedLecturer() const;
 
-    // Test/simulation methods
+    /** Simulates an RFID read event for testing without hardware. */
     void simulateRfidRead(const QString& rfidData);
 
 signals:
-    // D-Bus signals
+    /** Emitted when the auth status changes (newStatus is an AuthStatus value). */
     void AuthStatusChanged(int newStatus);
+    /** Emitted when a lecturer is successfully authenticated. */
     void LecturerAuthenticated(const QString& lecturerName, qlonglong timestamp);
+    /** Emitted when authentication fails, with a description of why. */
     void AuthenticationFailed(const QString& reason);
 
-    // Internal signals
+    /** Internal signal: raw RFID data received from the reader. */
     void rfidDataReceived(const QString& data);
 
 public slots:
-    // D-Bus methods
+    /** D-Bus callable: returns the current authentication status integer. */
     Q_SCRIPTABLE int GetAuthStatus() const;
+    /** D-Bus callable: attempts to unlock the screen with the given RFID data. */
     Q_SCRIPTABLE bool UnlockScreen(const QString& rfidData);
+    /** D-Bus callable: immediately locks the screen. */
     Q_SCRIPTABLE bool LockScreen();
+    /** D-Bus callable: returns the authenticated lecturer's name. */
     Q_SCRIPTABLE QString GetAuthenticatedLecturer() const;
 
-    // TODO: Temp need to refactor
+    /** Handles an incoming RFID read from the reader hardware. */
     void onRfidRead(const QString& rfidData);
+    /** Called when the RFID reader hardware connects. */
     void onRfidReaderConnected();
+    /** Called when the RFID reader hardware disconnects. */
     void onRfidReaderDisconnected();
+    /** Called when the RFID reader reports an error. */
     void onRfidReaderError(const QString& error);
 
 protected slots:
-    // Internal slots
-    // TODO: Need enhance encapsulation of this module by doing connect function inside initialize() function.
-    // void onRfidRead(const QString& rfidData);
+    /** Locks the screen when the auto-lock idle timer fires. */
     void onLockTimeout();
-    // void onRfidReaderConnected();
-    // void onRfidReaderDisconnected();
-    // void onRfidReaderError(const QString& error);
 
 private:
-    // Authentication status enum
+    /** Internal states for the authentication FSM. */
     enum AuthStatus {
         LOCKED = 0,
         UNLOCKING = 1,
@@ -74,17 +81,21 @@ private:
         ERROR = 4
     };
 
-    // Lecturer database methods
+    /** Loads lecturer RFID entries from a JSON file on disk. */
     bool loadLecturerDatabase();
+    /** Looks up an RFID in the database and checks if the lecturer is authorized. */
     bool verifyLecturerRfid(const QString& rfidData, Lecturer& lecturer);
+    /** Returns true if the RFID string has valid format (alphanumeric, 1-50 chars). */
     bool isRfidValid(const QString& rfid) const;
 
-    // State management
+    /** Sets a new auth status and emits AuthStatusChanged. */
     void setAuthStatus(AuthStatus newStatus);
+    /** Puts the service into error state with the given message. */
     void setError(const QString& error);
 
-    // Auto-lock management
+    /** Starts the timer that auto-locks after m_lockTimeoutMs of inactivity. */
     void startAutoLockTimer();
+    /** Cancels the auto-lock timer. */
     void cancelAutoLockTimer();
 
     // Configuration

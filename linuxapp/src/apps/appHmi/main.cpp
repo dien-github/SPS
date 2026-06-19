@@ -6,6 +6,7 @@
 //#include "cMockAuthService.h"
 #include "app_dbus_client.h"
 
+/** Application entry point. Initializes the D-Bus client, sets up the QML engine, and runs the HMI in fullscreen kiosk mode. */
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);

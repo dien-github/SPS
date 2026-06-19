@@ -12,6 +12,44 @@
 #define logDebug(comp, msg) Logger::instance().debug(comp, msg)
 #define logWarning(comp, msg) Logger::instance().warning(comp, msg)
 
+namespace {
+constexpr uchar CmdLightControl = 0x21;
+constexpr uchar CmdCurtainControl = 0x22;
+constexpr uchar CmdProjectorControl = 0x23;
+constexpr uchar CmdAcControl = 0x24;
+
+constexpr uchar DeviceLightAll = 0xFF;
+constexpr uchar DeviceCurtainAll = 0x01;
+constexpr uchar DeviceScreen = 0x02;
+constexpr uchar DeviceAc = 0x01;
+
+constexpr uchar ValueOff = 0x00;
+constexpr uchar ValueOn = 0x01;
+constexpr uchar ValueStop = 0x02;
+
+QString normalizeKey(QString value) {
+    value = value.trimmed().toLower();
+    value.remove('-');
+    value.remove('_');
+    value.remove(' ');
+    return value;
+}
+
+bool actionToBinaryValue(const QString& action, uchar& value) {
+    const QString normalized = action.trimmed().toLower();
+    if (normalized == "on" || normalized == "open" || normalized == "up") {
+        value = ValueOn;
+        return true;
+    }
+    if (normalized == "off" || normalized == "close" || normalized == "down") {
+        value = ValueOff;
+        return true;
+    }
+    return false;
+}
+}
+
+/** Constructor. Initializes D-Bus interface pointers, cached state, and reads PC control config from environment. */
 AppDbusCli::AppDbusCli(QObject* parent)
     : QObject(parent),
       m_authInterface(nullptr),
@@ -20,11 +58,13 @@ AppDbusCli::AppDbusCli(QObject* parent)
       m_netMgrInterface(nullptr),
       m_authStatus("UNKNOWN"),
       m_mqttStatus("DISCONNECTED"),
+      m_networkConnected(false),
       m_pcControlEnabled(SPS::Runtime::envBool("SPS_ENABLE_PC_CONTROL", false)),
       m_pcMacAddress(SPS::Runtime::envString("SPS_PC_MAC", "")) {
     logInfo("AppDbusCli", "Created");
 }
 
+/** Destructor. Deletes all D-Bus interface pointers. */
 AppDbusCli::~AppDbusCli() {
     if (m_authInterface) delete m_authInterface;
     if (m_routerInterface) delete m_routerInterface;
@@ -32,7 +72,7 @@ AppDbusCli::~AppDbusCli() {
     if (m_netMgrInterface) delete m_netMgrInterface;
 }
 
-// Initialize and discover all services
+/** Connects to all SPS D-Bus services, sets up signal handlers, and refreshes PC control config. */
 bool AppDbusCli::initialize() {
     logInfo("AppDbusCli", "Initializing D-Bus client...");
 
@@ -57,12 +97,16 @@ bool AppDbusCli::initialize() {
     if (!setupSignalConnections()) {
         logWarning("AppDbusCli", "Failed to setup some signal connections");
     }
+    refreshPcControlConfig();
+    const QString networkStatus = getNetworkStatus().trimmed().toUpper();
+    m_networkConnected = (networkStatus == "ONLINE" || networkStatus == "CONNECTED");
+    emit networkStatusChanged(m_networkConnected);
 
     logInfo("AppDbusCli", "Initialization complete");
     return true;
 }
 
-// Discover services on D-Bus
+/** Scans the D-Bus system bus for expected SPS services and logs which are found or missing. */
 bool AppDbusCli::discoverServices() {
     logInfo("AppDbusCli", "Discovering SPS services...");
 
@@ -82,7 +126,7 @@ bool AppDbusCli::discoverServices() {
     return true;
 }
 
-// Verify all services are available
+/** Checks that all four D-Bus service interfaces (auth, router, engine, netmgr) are valid. */
 bool AppDbusCli::verifyServiceAvailability() {
     bool authValid = m_authInterface && m_authInterface->isValid();
     bool routerValid = m_routerInterface && m_routerInterface->isValid();
@@ -101,18 +145,22 @@ bool AppDbusCli::verifyServiceAvailability() {
 
 // === Authentication Methods ===
 
-bool AppDbusCli::unlockScreen() {
-    logInfo("AppDbusCli", "Calling auth.UnlockScreen()");
-    QVariant result = callMethod(m_authInterface, "UnlockScreen");
+/** Sends an unlock request to the authentication D-Bus service with the given RFID data. */
+bool AppDbusCli::unlockScreen(const QString& rfidData) {
+    const QString uid = rfidData.trimmed().isEmpty() ? QStringLiteral("RFID001") : rfidData.trimmed();
+    logInfo("AppDbusCli", QString("Calling auth.UnlockScreen(%1)").arg(uid));
+    QVariant result = callMethod(m_authInterface, "UnlockScreen", uid);
     return result.toBool();
 }
 
+/** Sends a lock request to the authentication D-Bus service. */
 bool AppDbusCli::lockScreen() {
     logInfo("AppDbusCli", "Calling auth.LockScreen()");
     QVariant result = callMethod(m_authInterface, "LockScreen");
     return result.toBool();
 }
 
+/** Returns the name of the currently authenticated lecturer from the auth service. */
 QString AppDbusCli::getAuthenticatedLecturer() {
     QVariant result = callMethod(m_authInterface, "GetAuthenticatedLecturer");
     return result.toString();
@@ -120,6 +168,7 @@ QString AppDbusCli::getAuthenticatedLecturer() {
 
 // === Scenario Engine Methods ===
 
+/** Sends a request to start the given scenario and updates the cached current scenario on success. */
 bool AppDbusCli::executeScenario(const QString& scenarioId) {
     logInfo("AppDbusCli", QString("Calling engine.ExecuteScenario(%1)").arg(scenarioId));
     QVariant result = callMethod(m_engineInterface, "ExecuteScenario", scenarioId);
@@ -131,17 +180,20 @@ bool AppDbusCli::executeScenario(const QString& scenarioId) {
     return success;
 }
 
+/** Sends a request to stop the given scenario. */
 bool AppDbusCli::stopScenario(const QString& scenarioId) {
     logInfo("AppDbusCli", QString("Calling engine.StopScenario(%1)").arg(scenarioId));
     QVariant result = callMethod(m_engineInterface, "StopScenario", scenarioId);
     return result.toBool();
 }
 
+/** Queries the current status of a scenario from the engine D-Bus service. */
 QString AppDbusCli::getScenarioStatus(const QString& scenarioId) {
     QVariant result = callMethod(m_engineInterface, "GetScenarioStatus", scenarioId);
     return result.toString();
 }
 
+/** Retrieves the list of available scenarios from the engine and emits scenariosUpdated. */
 QStringList AppDbusCli::getAvailableScenarios() {
     if (!m_engineInterface || !m_engineInterface->isValid()) {
         return QStringList();
@@ -157,53 +209,182 @@ QStringList AppDbusCli::getAvailableScenarios() {
 
 // === Device Control Methods ===
 
+/** Sends a command to a device via the protocol router D-Bus service. */
 bool AppDbusCli::sendDeviceCommand(uchar deviceId, const QString& action) {
     logDebug("AppDbusCli", QString("Sending device command: id=0x%1, action=%2")
         .arg(deviceId, 2, 16, QChar('0')).arg(action));
 
     if (!m_routerInterface || !m_routerInterface->isValid()) {
+        logWarning("AppDbusCli", "ProtocolRouter interface is not available");
         return false;
     }
 
-    // TODO: Map action string to state value and call SendCommand
+    const QString normalizedAction = action.trimmed().toLower();
+    QByteArray payload;
 
-    return true;
+    switch (deviceId) {
+        case CmdLightControl: {
+            uchar value;
+            if (!actionToBinaryValue(normalizedAction, value)) {
+                logWarning("AppDbusCli", QString("Unsupported light action: %1").arg(action));
+                return false;
+            }
+            payload.append(static_cast<char>(DeviceLightAll));
+            payload.append(static_cast<char>(value));
+            break;
+        }
+        case CmdCurtainControl: {
+            QString curtainAction = normalizedAction;
+            uchar targetDevice = DeviceCurtainAll;
+
+            if (curtainAction.startsWith("screen-")) {
+                targetDevice = DeviceScreen;
+                curtainAction = curtainAction.mid(QStringLiteral("screen-").size());
+            } else if (curtainAction.startsWith("curtain-")) {
+                targetDevice = DeviceCurtainAll;
+                curtainAction = curtainAction.mid(QStringLiteral("curtain-").size());
+            }
+
+            uchar value;
+            if (curtainAction == "stop") {
+                value = ValueStop;
+            } else if (!actionToBinaryValue(curtainAction, value)) {
+                logWarning("AppDbusCli", QString("Unsupported curtain/screen action: %1").arg(action));
+                return false;
+            }
+
+            payload.append(static_cast<char>(targetDevice));
+            payload.append(static_cast<char>(value));
+            break;
+        }
+        case CmdProjectorControl: {
+            uchar value;
+            if (!actionToBinaryValue(normalizedAction, value)) {
+                logWarning("AppDbusCli", QString("Unsupported projector action: %1").arg(action));
+                return false;
+            }
+            payload.append(static_cast<char>(value));
+            break;
+        }
+        case CmdAcControl: {
+            uchar value;
+            if (!actionToBinaryValue(normalizedAction, value)) {
+                logWarning("AppDbusCli", QString("Unsupported AC action: %1").arg(action));
+                return false;
+            }
+            payload.append(static_cast<char>(DeviceAc));
+            payload.append(static_cast<char>(value));
+            break;
+        }
+        default:
+            logWarning("AppDbusCli", QString("Unsupported command id: 0x%1")
+                .arg(deviceId, 2, 16, QChar('0')));
+            return false;
+    }
+
+    return sendRouterCommand(deviceId, payload);
 }
 
+/** Controls a classroom device using UI-level names instead of raw UART command IDs. */
+bool AppDbusCli::controlClassroomDevice(const QString& deviceKey, const QString& action) {
+    const QString key = normalizeKey(deviceKey);
+    const QString normalizedAction = action.trimmed().toLower();
+
+    if (key == "deskpc" || key == "pc" || key == "computer") {
+        if (normalizedAction == "on" || normalizedAction == "wake") {
+            return sendWoL(m_pcMacAddress);
+        }
+
+        logWarning("AppDbusCli", QString("Desk PC action is not supported: %1").arg(action));
+        return false;
+    }
+
+    if (key == "roomlights" || key == "lights") {
+        return sendDeviceCommand(CmdLightControl, normalizedAction);
+    }
+    if (key == "curtains" || key == "curtain") {
+        return sendDeviceCommand(CmdCurtainControl, QStringLiteral("curtain-%1").arg(normalizedAction));
+    }
+    if (key == "projectionscreen" || key == "screen") {
+        return sendDeviceCommand(CmdCurtainControl, QStringLiteral("screen-%1").arg(normalizedAction));
+    }
+    if (key == "projector") {
+        return sendDeviceCommand(CmdProjectorControl, normalizedAction);
+    }
+    if (key == "airconditioner" || key == "ac") {
+        return sendDeviceCommand(CmdAcControl, normalizedAction);
+    }
+
+    logWarning("AppDbusCli", QString("Unknown classroom device key: %1").arg(deviceKey));
+    return false;
+}
+
+/** Queries the status of a device from the protocol router D-Bus service. */
 uint AppDbusCli::getDeviceStatus(uchar deviceId) {
     if (!m_routerInterface || !m_routerInterface->isValid()) {
         return 0;
     }
 
-    QDBusReply<uint> reply = m_routerInterface->call("GetDeviceStatus", deviceId);
+    QDBusReply<uchar> reply = m_routerInterface->call(
+        "GetDeviceStatus", QVariant::fromValue(static_cast<quint8>(deviceId)));
     return reply.isValid() ? reply.value() : 0;
+}
+
+/** Converts a scenario ID into a touch-friendly display name. */
+QString AppDbusCli::getScenarioDisplayName(const QString& scenarioId) const {
+    QString displayName = scenarioId.trimmed();
+    if (displayName.startsWith("scenario-", Qt::CaseInsensitive)) {
+        displayName = displayName.mid(QStringLiteral("scenario-").size());
+    }
+
+    displayName.replace('-', ' ');
+    displayName.replace('_', ' ');
+
+    QStringList words = displayName.split(' ', Qt::SkipEmptyParts);
+    for (QString& word : words) {
+        word = word.left(1).toUpper() + word.mid(1).toLower();
+    }
+
+    return words.isEmpty() ? scenarioId : words.join(' ');
 }
 
 // === Network Manager Methods ===
 
+/** Connects to an MQTT broker via the network manager D-Bus service. */
 bool AppDbusCli::connectToMqtt(const QString& broker, int port) {
     logInfo("AppDbusCli", QString("Calling network.ConnectToMqtt(%1:%2)").arg(broker).arg(port));
     QVariant result = callMethod(m_netMgrInterface, "ConnectToMqtt", broker, port);
     return result.toBool();
 }
 
+/** Disconnects from the MQTT broker via the network manager D-Bus service. */
 bool AppDbusCli::disconnectFromMqtt() {
     logInfo("AppDbusCli", "Calling network.DisconnectFromMqtt()");
     QVariant result = callMethod(m_netMgrInterface, "DisconnectFromMqtt");
     return result.toBool();
 }
 
+/** Sends a WoL packet to the given MAC address; falls back to configured address if empty. Skips if PC control is disabled. */
 bool AppDbusCli::sendWoL(const QString& macAddress) {
+    if (!m_pcControlEnabled) {
+        logWarning("AppDbusCli", "Wake-on-LAN skipped because PC control is disabled");
+        return false;
+    }
+
+    const QString targetMac = macAddress.trimmed().isEmpty() ? m_pcMacAddress : macAddress.trimmed();
+    logInfo("AppDbusCli", QString("Sending WoL to %1").arg(targetMac));
     QVariant result = callMethod(m_netMgrInterface, "SendWakeOnLAN", targetMac,
                                  SPS::Runtime::envString("SPS_WOL_BROADCAST", "255.255.255.255"));
     return result.toBool();
 }
 
+/** Returns the current MQTT connection status from the network manager. */
 QString AppDbusCli::getMqttStatus() {
     QVariant result = callMethod(m_netMgrInterface, "GetMqttStatus");
     return result.toString();
 }
 
+/** Returns the current network status from the network manager. */
 QString AppDbusCli::getNetworkStatus() {
     QVariant result = callMethod(m_netMgrInterface, "GetNetworkStatus");
     return result.toString();
@@ -211,20 +392,70 @@ QString AppDbusCli::getNetworkStatus() {
 
 // === Getters ===
 
+/** Returns the cached authentication status string. */
 QString AppDbusCli::getAuthStatus() const {
     return m_authStatus;
 }
 
+/** Returns the ID of the currently executing scenario. */
 QString AppDbusCli::getCurrentScenario() const {
     return m_currentScenario;
 }
 
+/** Returns the cached MQTT status string. */
 QString AppDbusCli::getMqttStatus() const {
     return m_mqttStatus;
 }
 
+/** Returns whether generic network connectivity is currently online. */
+bool AppDbusCli::isNetworkConnected() const {
+    return m_networkConnected;
+}
+
+/** Returns whether PC Wake-on-LAN control is enabled. */
+bool AppDbusCli::isPcControlEnabled() const {
+    return m_pcControlEnabled;
+}
+
+/** Returns the configured PC MAC address for Wake-on-LAN. */
+QString AppDbusCli::getPcMacAddress() const {
+    return m_pcMacAddress;
+}
+
+/** Refreshes PC control config from environment variables and D-Bus; emits pcControlConfigChanged on change. */
+bool AppDbusCli::refreshPcControlConfig() {
+    bool changed = false;
+    bool enabled = SPS::Runtime::envBool("SPS_ENABLE_PC_CONTROL", m_pcControlEnabled);
+    QString macAddress = SPS::Runtime::envString("SPS_PC_MAC", m_pcMacAddress);
+
+    if (m_netMgrInterface && m_netMgrInterface->isValid()) {
+        QDBusReply<bool> enabledReply = m_netMgrInterface->call("IsPcControlEnabled");
+        if (enabledReply.isValid()) {
+            enabled = enabledReply.value();
+        }
+
+        QDBusReply<QString> macReply = m_netMgrInterface->call("GetPcMacAddress");
+        if (macReply.isValid()) {
+            macAddress = macReply.value();
+        }
+    }
+
+    if (enabled != m_pcControlEnabled || macAddress != m_pcMacAddress) {
+        m_pcControlEnabled = enabled;
+        m_pcMacAddress = macAddress;
+        changed = true;
+        emit pcControlConfigChanged();
+    }
+
+    logInfo("AppDbusCli", QString("PC control config: enabled=%1, mac=%2")
+        .arg(m_pcControlEnabled ? "true" : "false")
+        .arg(m_pcMacAddress.isEmpty() ? "<not set>" : m_pcMacAddress));
+    return changed;
+}
+
 // === Private Methods ===
 
+/** Connects to a D-Bus service at the given bus name and object path, storing the interface pointer. */
 bool AppDbusCli::connectToService(QDBusInterface*& iface, const QString& service, const QString& path) {
     iface = new QDBusInterface(service, path, service, QDBusConnection::systemBus());
 
@@ -237,50 +468,68 @@ bool AppDbusCli::connectToService(QDBusInterface*& iface, const QString& service
     return true;
 }
 
+/** Wires up all D-Bus service signals to their corresponding private slot handlers. */
 bool AppDbusCli::setupSignalConnections() {
     bool ok = true;
+    QDBusConnection dbus = QDBusConnection::systemBus();
+
+    auto connectSignal = [&](const QString& service,
+                             const QString& path,
+                             const QString& interface,
+                             const QString& signal,
+                             const char* slot) {
+        const bool connected = dbus.connect(service, path, interface, signal, this, slot);
+        if (!connected) {
+            logWarning("AppDbusCli", QString("Failed to connect D-Bus signal %1.%2")
+                .arg(interface, signal));
+        }
+        ok = ok && connected;
+    };
 
     // Auth service signals
     if (m_authInterface) {
-        ok = ok && connect(m_authInterface, SIGNAL(AuthStatusChanged(int)),
-                      this, SLOT(onAuthStatusChanged(int)));
+        connectSignal("com.sps.auth", "/com/sps/auth", "com.sps.auth",
+                      "AuthStatusChanged", SLOT(onAuthStatusChanged(int)));
+        connectSignal("com.sps.auth", "/com/sps/auth", "com.sps.auth",
+                      "LecturerAuthenticated", SLOT(onLecturerAuthenticated(QString,qlonglong)));
     }
 
     // Scenario engine signals
     if (m_engineInterface) {
-        ok = ok && connect(m_engineInterface, SIGNAL(ScenarioStarted(QString)),
-                      this, SLOT(onScenarioStarted(QString)));
-        ok = ok && connect(m_engineInterface, SIGNAL(ScenarioCompleted(QString)),
-                      this, SLOT(onScenarioCompleted(QString)));
-        ok = ok && connect(m_engineInterface, SIGNAL(ScenarioError(QString, QString)),
-                      this, SLOT(onScenarioError(QString, QString)));
-        ok = ok && connect(m_engineInterface, SIGNAL(ContextTriggered(QString, QString)),
-                      this, SLOT(onContextTriggered(QString, QString)));
+        connectSignal("com.sps.engine", "/com/sps/engine", "com.sps.engine",
+                      "ScenarioStarted", SLOT(onScenarioStarted(QString)));
+        connectSignal("com.sps.engine", "/com/sps/engine", "com.sps.engine",
+                      "ScenarioCompleted", SLOT(onScenarioCompleted(QString)));
+        connectSignal("com.sps.engine", "/com/sps/engine", "com.sps.engine",
+                      "ScenarioError", SLOT(onScenarioError(QString,QString)));
+        connectSignal("com.sps.engine", "/com/sps/engine", "com.sps.engine",
+                      "ContextTriggered", SLOT(onContextTriggered(QString,QString)));
     }
 
     // Protocol router signals
     if (m_routerInterface) {
-        ok = ok && connect(m_routerInterface, SIGNAL(CommandAck(uchar)),
-                      this, SLOT(onCommandAck(uchar)));
-        ok = ok && connect(m_routerInterface, SIGNAL(CommandError(uchar, uchar)),
-                      this, SLOT(onCommandError(uchar, uchar)));
+        connectSignal("com.sps.router", "/com/sps/router", "com.sps.router",
+                      "CommandAcknowledged", SLOT(onCommandAck(uchar)));
+        connectSignal("com.sps.router", "/com/sps/router", "com.sps.router",
+                      "CommandError", SLOT(onCommandError(uchar,uchar)));
     }
 
     // Network manager signals
     if (m_netMgrInterface) {
-        ok = ok && connect(m_netMgrInterface, SIGNAL(MqttConnected()),
-                      this, SLOT(onMqttConnected()));
-        ok = ok && connect(m_netMgrInterface, SIGNAL(MqttDisconnected(QString)),
-                      this, SLOT(onMqttDisconnected(QString)));
-        ok = ok && connect(m_netMgrInterface, SIGNAL(NetworkStatusChanged(bool)),
-                      this, SLOT(onNetworkStatusChanged(bool)));
-        ok = ok && connect(m_netMgrInterface, SIGNAL(CommandReceived(QString, QJsonObject)),
-                      this, SLOT(onCommandReceived(QString, QJsonObject)));
+        connectSignal("com.sps.netmgr", "/com/sps/netmgr", "com.sps.netmgr",
+                      "MqttConnected", SLOT(onMqttConnected()));
+        connectSignal("com.sps.netmgr", "/com/sps/netmgr", "com.sps.netmgr",
+                      "MqttDisconnected", SLOT(onMqttDisconnected(QString)));
+        connectSignal("com.sps.netmgr", "/com/sps/netmgr", "com.sps.netmgr",
+                      "NetworkStatusChanged", SLOT(onNetworkStatusChanged(bool)));
+        connectSignal("com.sps.netmgr", "/com/sps/netmgr", "com.sps.netmgr",
+                      "CommandReceived", SLOT(onCommandReceived(QString,QJsonObject)));
     }
 
     return ok;
 }
 
+/** Calls a D-Bus method on the given interface with up to two optional arguments. Returns the result variant. */
 QVariant AppDbusCli::callMethod(QDBusInterface* iface, const QString& method, 
                                 const QVariant& arg1, const QVariant& arg2) {
     if (!iface || !iface->isValid()) {
@@ -288,7 +537,7 @@ QVariant AppDbusCli::callMethod(QDBusInterface* iface, const QString& method,
         return QVariant();
     }
 
-    QDBusReply<QVariant> reply;
+    QDBusMessage reply;
     if (arg2.isValid()) {
         reply = iface->call(method, arg1, arg2);
     } else if (arg1.isValid()) {
@@ -297,10 +546,36 @@ QVariant AppDbusCli::callMethod(QDBusInterface* iface, const QString& method,
         reply = iface->call(method);
     }
 
-    if (!reply.isValid()) {
+    if (reply.type() == QDBusMessage::ErrorMessage) {
         logError("AppDbusCli", QString("Method call failed: %1 - %2")
-            .arg(method).arg(reply.error().message()));
+            .arg(method).arg(reply.errorMessage()));
         return QVariant();
+    }
+
+    if (reply.arguments().isEmpty()) {
+        return QVariant();
+    }
+
+    return reply.arguments().at(0);
+}
+
+/** Sends a low-level UART command through the ProtocolRouter service. */
+bool AppDbusCli::sendRouterCommand(uchar cmdId, const QByteArray& payload) {
+    if (!m_routerInterface || !m_routerInterface->isValid()) {
+        logWarning("AppDbusCli", "ProtocolRouter interface is not available");
+        return false;
+    }
+
+    logInfo("AppDbusCli", QString("Calling router.SendCommand(cmd=0x%1, payload=%2)")
+        .arg(cmdId, 2, 16, QChar('0'))
+        .arg(QString::fromLatin1(payload.toHex(' '))));
+
+    QDBusReply<bool> reply = m_routerInterface->call(
+        "SendCommand", QVariant::fromValue(static_cast<quint8>(cmdId)), payload);
+    if (!reply.isValid()) {
+        logError("AppDbusCli", QString("SendCommand failed: %1")
+            .arg(reply.error().message()));
+        return false;
     }
 
     return reply.value();
@@ -308,6 +583,7 @@ QVariant AppDbusCli::callMethod(QDBusInterface* iface, const QString& method,
 
 // === Signal Handlers ===
 
+/** Handles AuthStatusChanged from the auth service: maps the int status to a string and emits authStatusChanged. */
 void AppDbusCli::onAuthStatusChanged(int status) {
     QString statusStr;
     switch(status) {
@@ -323,58 +599,81 @@ void AppDbusCli::onAuthStatusChanged(int status) {
     emit authStatusChanged(statusStr);
 }
 
+/** Handles LecturerAuthenticated from the auth service and re-emits it. */
+void AppDbusCli::onLecturerAuthenticated(const QString& lecturerName, qlonglong timestamp) {
+    logInfo("AppDbusCli", QString("Lecturer authenticated: %1").arg(lecturerName));
+    emit lecturerAuthenticated(lecturerName, timestamp);
+}
+
+/** Handles ScenarioStarted from the engine service and re-emits it. */
 void AppDbusCli::onScenarioStarted(const QString& scenarioId) {
     logInfo("AppDbusCli", QString("Scenario started: %1").arg(scenarioId));
     emit scenarioStarted(scenarioId);
 }
 
+/** Handles ScenarioCompleted from the engine service, clears the current scenario, and re-emits it. */
 void AppDbusCli::onScenarioCompleted(const QString& scenarioId) {
     logInfo("AppDbusCli", QString("Scenario completed: %1").arg(scenarioId));
     m_currentScenario.clear();
     emit scenarioCompleted(scenarioId);
 }
 
+/** Handles ScenarioError from the engine service and re-emits it with the error message. */
 void AppDbusCli::onScenarioError(const QString& scenarioId, const QString& error) {
     logError("AppDbusCli", QString("Scenario error: %1 - %2").arg(scenarioId).arg(error));
     emit scenarioError(scenarioId, error);
 }
 
+/** Handles ContextTriggered from the engine service and re-emits it. */
 void AppDbusCli::onContextTriggered(const QString& context, const QString& scenarioId) {
     logInfo("AppDbusCli", QString("Context triggered: %1 -> %2").arg(context).arg(scenarioId));
     emit contextTriggered(context, scenarioId);
 }
 
+/** Handles MqttConnected from the network manager, updates cached status, and re-emits it. */
 void AppDbusCli::onMqttConnected() {
     logInfo("AppDbusCli", "MQTT connected");
     m_mqttStatus = "CONNECTED";
-    emit mqttStatusChanged("CONNECTED");
+    m_networkConnected = true;
+    emit mqttStatusChanged(m_mqttStatus);
     emit mqttConnected();
+    emit networkStatusChanged(m_networkConnected);
 }
 
+/** Handles MqttDisconnected from the network manager, updates cached status, and re-emits it. */
 void AppDbusCli::onMqttDisconnected(const QString& reason) {
     logWarning("AppDbusCli", QString("MQTT disconnected: %1").arg(reason));
     m_mqttStatus = "DISCONNECTED";
-    emit mqttStatusChanged("DISCONNECTED");
+    m_networkConnected = false;
+    emit mqttStatusChanged(m_mqttStatus);
     emit mqttDisconnected(reason);
+    emit networkStatusChanged(m_networkConnected);
 }
 
+/** Handles NetworkStatusChanged from the network manager and re-emits it. */
 void AppDbusCli::onNetworkStatusChanged(bool connected) {
     logInfo("AppDbusCli", QString("Network status: %1").arg(connected ? "ONLINE" : "OFFLINE"));
+    m_networkConnected = connected;
     emit networkStatusChanged(connected);
 }
 
+/** Handles CommandReceived from the network manager and re-emits it. */
 void AppDbusCli::onCommandReceived(const QString& command, const QJsonObject& payload) {
     logDebug("AppDbusCli", QString("Command received: %1").arg(command));
     emit commandReceived(command, payload);
 }
 
+/** Handles CommandAcknowledged from the protocol router and re-emits it. */
 void AppDbusCli::onCommandAck(uchar cmdId) {
     logDebug("AppDbusCli", QString("Command ACK: 0x%1").arg(cmdId, 2, 16, QChar('0')));
     emit commandAck(cmdId);
 }
 
+/** Handles CommandError from the protocol router and re-emits it with the error code. */
 void AppDbusCli::onCommandError(uchar cmdId, uchar errorCode) {
     logError("AppDbusCli", QString("Command error: 0x%1 - 0x%2")
         .arg(cmdId, 2, 16, QChar('0')).arg(errorCode, 2, 16, QChar('0')));
     emit commandError(cmdId, errorCode);
 }
+
+#include "moc_app_dbus_client.cpp"

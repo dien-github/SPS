@@ -1,0 +1,19 @@
+[Unit]
+Description=SPS Protocol Router - UART/MCU communication
+Documentation=https://github.com/anomalyco/SPS
+Wants=dbus.service
+After=dbus.service
+PartOf=sps.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sps
+ExecStart=/opt/sps/bin/svcProtocolRouter
+Restart=on-failure
+RestartSec=3
+Environment=SPS_CONFIG_DIR=/opt/sps/config
+Environment=SPS_MCU_MODE=virtual
+Environment=SPS_UART_PORT=/dev/ttyAMA0
+
+[Install]
+WantedBy=sps.target

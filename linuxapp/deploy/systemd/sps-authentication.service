@@ -1,0 +1,18 @@
+[Unit]
+Description=SPS Authentication Service - RFID reader
+Documentation=https://github.com/anomalyco/SPS
+Wants=dbus.service
+After=dbus.service
+PartOf=sps.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sps
+ExecStart=/opt/sps/bin/svcAuthentication
+Restart=on-failure
+RestartSec=3
+
+Environment=SPS_CONFIG_DIR=/opt/sps/config
+
+[Install]
+WantedBy=sps.target

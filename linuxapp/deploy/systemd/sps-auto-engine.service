@@ -1,0 +1,19 @@
+[Unit]
+Description=SPS Automation Engine - scenario execution
+Documentation=https://github.com/anomalyco/SPS
+Requires=sps-protocol-router.service
+Wants=dbus.service
+After=dbus.service sps-protocol-router.service
+PartOf=sps.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sps
+ExecStart=/opt/sps/bin/svcAutoEngine
+Restart=on-failure
+RestartSec=3
+
+Environment=SPS_CONFIG_DIR=/opt/sps/config
+
+[Install]
+WantedBy=sps.target

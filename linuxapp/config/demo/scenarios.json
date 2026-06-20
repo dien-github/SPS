@@ -1,14 +1,72 @@
 [
   {
     "id": "scenario-startup",
-    "name": "Startup",
-    "description": "Turn on classroom lights and projector",
+    "name": "Khởi động lớp học",
+    "source_use_case": "SPS_UC_002",
+    "description": "Chuẩn bị phòng học sau khi giảng viên xác thực thành công: bật đèn, mở màn hình chiếu, bật máy chiếu và bật máy lạnh.",
+    "requires_confirmation": false,
+    "constraints": {
+      "requires_authenticated_lecturer": true,
+      "static_parameters_only": true,
+      "cloud_sync": false
+    },
     "commands": [
       {
         "order": 1,
         "device_type": "light",
-        "device_id": "2",
+        "device_id": "1",
         "target_state": "on",
+        "action": "on",
+        "delay_ms": 0
+      },
+      {
+        "order": 2,
+        "device_type": "curtain",
+        "device_id": "2",
+        "target_state": "open",
+        "action": "open",
+        "delay_ms": 300
+      },
+      {
+        "order": 3,
+        "device_type": "projector",
+        "device_id": "1",
+        "target_state": "on",
+        "action": "on",
+        "delay_ms": 1000
+      },
+      {
+        "order": 4,
+        "device_type": "ac",
+        "device_id": "1",
+        "target_state": "on",
+        "action": "on",
+        "delay_ms": 500
+      }
+    ],
+    "notes": [
+      "Máy tính/Wake-on-LAN chưa được đưa vào scenario vì engine hiện chưa có device_type computer.",
+      "Thông số máy lạnh là tĩnh, không tự động thay đổi theo thời tiết."
+    ]
+  },
+  {
+    "id": "scenario-presentation",
+    "name": "Trình chiếu",
+    "source_use_case": "SPS_UC_002",
+    "description": "Phục vụ trình chiếu: mở màn hình chiếu, bật máy chiếu, tắt đèn chính, đóng rèm và bật máy lạnh theo cấu hình tĩnh.",
+    "requires_confirmation": false,
+    "constraints": {
+      "requires_authenticated_lecturer": true,
+      "static_parameters_only": true,
+      "cloud_sync": false
+    },
+    "commands": [
+      {
+        "order": 1,
+        "device_type": "curtain",
+        "device_id": "2",
+        "target_state": "open",
+        "action": "open",
         "delay_ms": 0
       },
       {
@@ -16,29 +74,192 @@
         "device_type": "projector",
         "device_id": "1",
         "target_state": "on",
+        "action": "on",
+        "delay_ms": 1000
+      },
+      {
+        "order": 3,
+        "device_type": "light",
+        "device_id": "1",
+        "target_state": "off",
+        "action": "off",
+        "delay_ms": 500
+      },
+      {
+        "order": 4,
+        "device_type": "curtain",
+        "device_id": "3",
+        "target_state": "closed",
+        "action": "close",
+        "delay_ms": 300
+      },
+      {
+        "order": 5,
+        "device_type": "ac",
+        "device_id": "1",
+        "target_state": "on",
+        "action": "on",
         "delay_ms": 500
       }
     ]
   },
   {
+    "id": "scenario-discussion",
+    "name": "Thảo luận",
+    "source_use_case": "SPS_UC_002",
+    "description": "Chuyển phòng học sang chế độ thảo luận: bật đèn, tắt máy chiếu, đóng màn hình chiếu, mở rèm và duy trì máy lạnh.",
+    "requires_confirmation": false,
+    "constraints": {
+      "requires_authenticated_lecturer": true,
+      "static_parameters_only": true,
+      "cloud_sync": false
+    },
+    "commands": [
+      {
+        "order": 1,
+        "device_type": "light",
+        "device_id": "1",
+        "target_state": "on",
+        "action": "on",
+        "delay_ms": 0
+      },
+      {
+        "order": 2,
+        "device_type": "projector",
+        "device_id": "1",
+        "target_state": "off",
+        "action": "off",
+        "delay_ms": 500
+      },
+      {
+        "order": 3,
+        "device_type": "curtain",
+        "device_id": "2",
+        "target_state": "closed",
+        "action": "close",
+        "delay_ms": 500
+      },
+      {
+        "order": 4,
+        "device_type": "curtain",
+        "device_id": "3",
+        "target_state": "open",
+        "action": "open",
+        "delay_ms": 300
+      },
+      {
+        "order": 5,
+        "device_type": "ac",
+        "device_id": "1",
+        "target_state": "on",
+        "action": "on",
+        "delay_ms": 300
+      }
+    ]
+  },
+  {
+    "id": "scenario-break",
+    "name": "Nghỉ giải lao",
+    "source_use_case": "SPS_UC_002",
+    "description": "Tạm nghỉ: bật đèn, tắt máy chiếu, mở rèm và giữ máy lạnh theo trạng thái tĩnh đã cấu hình.",
+    "requires_confirmation": false,
+    "constraints": {
+      "requires_authenticated_lecturer": true,
+      "static_parameters_only": true,
+      "cloud_sync": false
+    },
+    "commands": [
+      {
+        "order": 1,
+        "device_type": "light",
+        "device_id": "1",
+        "target_state": "on",
+        "action": "on",
+        "delay_ms": 0
+      },
+      {
+        "order": 2,
+        "device_type": "projector",
+        "device_id": "1",
+        "target_state": "off",
+        "action": "off",
+        "delay_ms": 500
+      },
+      {
+        "order": 3,
+        "device_type": "curtain",
+        "device_id": "3",
+        "target_state": "open",
+        "action": "open",
+        "delay_ms": 300
+      },
+      {
+        "order": 4,
+        "device_type": "ac",
+        "device_id": "1",
+        "target_state": "on",
+        "action": "on",
+        "delay_ms": 300
+      }
+    ]
+  },
+  {
     "id": "scenario-shutdown",
-    "name": "Shutdown",
-    "description": "Turn off projector and classroom lights",
+    "name": "Tắt toàn bộ hệ thống",
+    "source_use_case": "SPS_UC_002",
+    "description": "Kịch bản có tác động lớn, cần xác nhận trước khi thực thi: tắt máy chiếu, tắt máy lạnh, tắt đèn, đóng màn hình chiếu và đóng rèm.",
+    "requires_confirmation": true,
+    "constraints": {
+      "requires_authenticated_lecturer": true,
+      "static_parameters_only": true,
+      "cloud_sync": false,
+      "continue_on_device_fault": true
+    },
     "commands": [
       {
         "order": 1,
         "device_type": "projector",
         "device_id": "1",
         "target_state": "off",
+        "action": "off",
         "delay_ms": 0
       },
       {
         "order": 2,
-        "device_type": "light",
-        "device_id": "2",
+        "device_type": "ac",
+        "device_id": "1",
         "target_state": "off",
+        "action": "off",
+        "delay_ms": 1000
+      },
+      {
+        "order": 3,
+        "device_type": "light",
+        "device_id": "1",
+        "target_state": "off",
+        "action": "off",
         "delay_ms": 500
+      },
+      {
+        "order": 4,
+        "device_type": "curtain",
+        "device_id": "2",
+        "target_state": "closed",
+        "action": "close",
+        "delay_ms": 500
+      },
+      {
+        "order": 5,
+        "device_type": "curtain",
+        "device_id": "3",
+        "target_state": "closed",
+        "action": "close",
+        "delay_ms": 300
       }
-    ]
+    ],
+    "exception_policy": {
+      "device_no_response": "continue_remaining_commands_and_report_fault",
+      "remote_admin_override": "reject_local_scenario"
+    }
   }
 ]

@@ -27,7 +27,8 @@ Options:
 Environment:
   SPS_CONFIG_DIR            Default: linuxapp/config/demo
   SPS_LOG_DIR               Default: ./logs
-  SPS_UART_PORT             Default: /dev/ttyUSB0
+  SPS_MCU_MODE              Default: virtual (virtual|auto|uart)
+  SPS_UART_PORT             Default: /dev/ttyUSB0 (used by auto/uart)
   SPS_ENABLE_PC_CONTROL     Default: 0
   SPS_PC_MAC                Required only when PC control is enabled
   SPS_WOL_BROADCAST         Default: 255.255.255.255
@@ -38,11 +39,12 @@ The default mode opens a tmux dashboard with 6 log panes and 1 command pane.
 In the command pane:
   fake-rfid RFID001
   scenario-startup
+  projector-on
   router-status
   stop-demo
 
 If you only need a one-line fallback:
-  qdbus --system com.sps.auth /com/sps/auth com.sps.auth.UnlockScreen RFID001
+  dbus-send --system --print-reply=literal --dest=com.sps.auth /com/sps/auth com.sps.auth.UnlockScreen string:RFID001
 EOF
 }
 
@@ -107,10 +109,19 @@ fi
 
 export SPS_CONFIG_DIR="${SPS_CONFIG_DIR:-${LINUXAPP_DIR}/config/demo}"
 export SPS_LOG_DIR="${SPS_LOG_DIR:-${ROOT_DIR}/logs}"
+export SPS_MCU_MODE="${SPS_MCU_MODE:-virtual}"
 export SPS_UART_PORT="${SPS_UART_PORT:-/dev/ttyUSB0}"
 export SPS_ENABLE_PC_CONTROL="${SPS_ENABLE_PC_CONTROL:-0}"
 export SPS_WOL_BROADCAST="${SPS_WOL_BROADCAST:-255.255.255.255}"
 export SPS_WOL_PORT="${SPS_WOL_PORT:-9}"
+case "${SPS_MCU_MODE}" in
+    virtual|auto|uart)
+        ;;
+    *)
+        echo "error: SPS_MCU_MODE must be one of: virtual, auto, uart" >&2
+        exit 2
+        ;;
+esac
 if [[ -z "${TERM:-}" || "${TERM}" == "dumb" ]]; then
     export TERM=xterm-256color
 fi
@@ -243,16 +254,47 @@ EOF
         printf 'export DBUS_SYSTEM_BUS_ADDRESS=%q\n' "${DBUS_SYSTEM_BUS_ADDRESS}"
         printf 'export SPS_CONFIG_DIR=%q\n' "${SPS_CONFIG_DIR}"
         printf 'export SPS_LOG_DIR=%q\n' "${SPS_LOG_DIR}"
+        printf 'export SPS_MCU_MODE=%q\n' "${SPS_MCU_MODE}"
         printf 'export SPS_UART_PORT=%q\n' "${SPS_UART_PORT}"
         printf 'export SPS_ENABLE_PC_CONTROL=%q\n' "${SPS_ENABLE_PC_CONTROL}"
         printf 'export SPS_WOL_BROADCAST=%q\n' "${SPS_WOL_BROADCAST}"
         printf 'export SPS_WOL_PORT=%q\n' "${SPS_WOL_PORT}"
         printf 'cd %q\n' "${ROOT_DIR}"
         printf 'fake-rfid() { python3 %q --uid "${1:-RFID001}"; }\n' "${SCRIPT_DIR}/fake_rfid_auth.py"
-        printf 'scenario-startup() { qdbus --system com.sps.engine /com/sps/engine com.sps.engine.ExecuteScenario scenario-startup; }\n'
-        printf 'router-status() { qdbus --system com.sps.router /com/sps/router com.sps.router.GetConnectionStatus; }\n'
         printf 'stop-demo() { tmux kill-session -t %q; }\n' "${TMUX_SESSION_NAME}"
         cat <<'EOF'
+sps_dbus_call() {
+  local dest="$1"
+  local path="$2"
+  local method="$3"
+  shift 3
+  dbus-send --system --print-reply=literal --dest="${dest}" "${path}" "${method}" "$@"
+}
+
+scenario-startup() {
+  sps_dbus_call com.sps.engine /com/sps/engine com.sps.engine.ExecuteScenario string:scenario-startup
+}
+
+projector-on() {
+  sps_dbus_call com.sps.router /com/sps/router com.sps.router.ControlProjector boolean:true
+}
+
+projector-off() {
+  sps_dbus_call com.sps.router /com/sps/router com.sps.router.ControlProjector boolean:false
+}
+
+light-on() {
+  sps_dbus_call com.sps.router /com/sps/router com.sps.router.ControlLight byte:255 boolean:true
+}
+
+light-off() {
+  sps_dbus_call com.sps.router /com/sps/router com.sps.router.ControlLight byte:255 boolean:false
+}
+
+router-status() {
+  sps_dbus_call com.sps.router /com/sps/router com.sps.router.GetConnectionStatus
+}
+
 clear
 cat <<'HELP'
 SPS WSL demo command pane
@@ -260,11 +302,13 @@ SPS WSL demo command pane
 Helpers:
   fake-rfid RFID001    Simulate one RFID swipe
   scenario-startup     Execute the startup scenario over D-Bus
-  router-status        Read UART router connection status
+  projector-on/off     Send a projector command to the MCU engine
+  light-on/off         Send a light command to the MCU engine
+  router-status        Read MCU router connection status
   stop-demo            Stop tmux dashboard and demo services
 
 Raw fallback:
-  qdbus --system com.sps.auth /com/sps/auth com.sps.auth.UnlockScreen RFID001
+  dbus-send --system --print-reply=literal --dest=com.sps.auth /com/sps/auth com.sps.auth.UnlockScreen string:RFID001
 HELP
 PS1='sps-demo$ '
 EOF
@@ -357,6 +401,7 @@ log_system "SPS WSL demo session"
 log_system "  Build dir: ${BUILD_DIR}"
 log_system "  Config dir: ${SPS_CONFIG_DIR}"
 log_system "  Log dir: ${SPS_LOG_DIR}"
+log_system "  MCU mode: ${SPS_MCU_MODE}"
 log_system "  UART port: ${SPS_UART_PORT}"
 log_system "  PC control: ${SPS_ENABLE_PC_CONTROL}"
 log_system "  D-Bus address: ${DBUS_SYSTEM_BUS_ADDRESS}"
@@ -386,6 +431,9 @@ Fake RFID:
 
 Tail logs:
   bash ${SCRIPT_DIR}/tail_sps_logs.sh
+
+Send a virtual MCU command:
+  dbus-send --system --print-reply=literal --dest=com.sps.router /com/sps/router com.sps.router.ControlProjector boolean:true
 
 Press Ctrl+C to stop the demo stack.
 EOF

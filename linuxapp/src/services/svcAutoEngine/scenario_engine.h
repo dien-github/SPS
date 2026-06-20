@@ -124,9 +124,9 @@ private:
     void setExecutionState(ExecutionState newState);
 
     /** Sends a single command to a device through the ProtocolRouter. */
-    bool executeCommand(const ScenarioCommand& cmd);
-    /** Sends a typed control command via the ProtocolRouter D-Bus interface. */
-    bool sendControlCommand(SPS::Device::Type deviceType, const QString& deviceId, SPS::Device::State state);
+    bool executeCommand(const ScenarioCommand& cmd, const QString& scenarioId, int commandIndex);
+    /** Normalizes and sends a typed control command via the ProtocolRouter D-Bus interface. */
+    bool sendControlCommand(const ScenarioCommand& cmd, const QString& scenarioId, int commandIndex);
 
     /** Creates and validates the D-Bus interface to the ProtocolRouter service. */
     bool connectToRouter();

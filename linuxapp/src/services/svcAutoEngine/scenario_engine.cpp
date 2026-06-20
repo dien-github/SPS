@@ -1,7 +1,7 @@
 #include "scenario_engine.h"
 #include "../common/sps_logger.h"
 #include "../common/sps_runtime_config.h"
-#include "sps_uart_protocol.h"
+#include "router_command_normalizer.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -26,35 +26,53 @@ QString jsonString(const QJsonObject& object, std::initializer_list<const char*>
     return QString();
 }
 
-SPS::Device::Type deviceTypeFromString(QString value, const QString& fallback) {
-    value = value.trimmed().toLower();
-    if (value.isEmpty()) {
-        value = fallback.trimmed().toLower();
+QString commandTextFromJson(const QJsonObject& object) {
+    const QString command = jsonString(object, {"command", "command_type"});
+    if (!command.isEmpty()) {
+        return command;
     }
 
-    if (value == "light") return SPS::Device::Type::LIGHT;
-    if (value == "relay") return SPS::Device::Type::RELAY;
-    if (value == "curtain") return SPS::Device::Type::CURTAIN;
-    if (value == "screen") return SPS::Device::Type::SCREEN;
-    if (value == "projector") return SPS::Device::Type::PROJECTOR;
-    if (value == "ac" || value == "air_conditioner" || value == "air-conditioner") {
-        return SPS::Device::Type::AC;
+    const QString type = jsonString(object, {"type"});
+    if (!type.isEmpty() &&
+        SPS::AutoEngine::parseDeviceType(type) == SPS::Device::Type::UNKNOWN) {
+        return type;
     }
-    return SPS::Device::Type::UNKNOWN;
+
+    const QString action = jsonString(object, {"action"});
+    if (!action.isEmpty() &&
+        SPS::AutoEngine::parseDeviceState(action) == SPS::Device::State::UNKNOWN) {
+        return action;
+    }
+
+    return QString();
 }
 
-SPS::Device::State stateFromAction(QString action) {
-    action = action.trimmed().toLower();
-    if (action == "on" || action == "open" || action == "up" ||
-        action == "enable" || action == "enabled" || action == "true" || action == "1") {
-        return SPS::Device::State::ON;
+QString stateTextFromJson(const QJsonObject& object) {
+    QString state = jsonString(object, {"target_state", "state", "value", "requested_state", "status"});
+    if (!state.isEmpty()) {
+        return state;
     }
-    if (action == "off" || action == "close" || action == "closed" ||
-        action == "down" || action == "disable" || action == "disabled" ||
-        action == "false" || action == "0") {
-        return SPS::Device::State::OFF;
+
+    const QString action = jsonString(object, {"action"});
+    if (SPS::AutoEngine::parseDeviceState(action) != SPS::Device::State::UNKNOWN) {
+        return action;
     }
-    return SPS::Device::State::UNKNOWN;
+
+    return QString();
+}
+
+QString deviceTypeTextFromJson(const QJsonObject& object) {
+    QString deviceType = jsonString(object, {"device_type", "device_kind"});
+    if (!deviceType.isEmpty()) {
+        return deviceType;
+    }
+
+    const QString type = jsonString(object, {"type"});
+    if (SPS::AutoEngine::parseDeviceType(type) != SPS::Device::Type::UNKNOWN) {
+        return type;
+    }
+
+    return QString();
 }
 } // namespace
 
@@ -210,43 +228,35 @@ bool ScenarioEngine::loadScenarios(const QString& scenariosPath) {
 
         QJsonArray commands = obj["commands"].toArray();
         for (int i = 0; i < commands.size(); ++i) {
-            QJsonObject cmdObj = commands[i].toObject();
-            int order = cmdObj["order"].toInt(i);
-            QString deviceType = cmdObj["device_type"].toString().toLower();
-            QString deviceId = cmdObj["device_id"].toVariant().toString();
-            int delayMs = cmdObj["delay_ms"].toInt(0);
-            QString targetState = cmdObj["target_state"].toString();
-            if (targetState.isEmpty()) {
-                targetState = cmdObj["state"].toString();
-            }
-            if (targetState.isEmpty()) {
-                targetState = cmdObj["action"].toString();
-            }
-            targetState = targetState.toLower();
-
-            SPS::Device::Type type = SPS::Device::Type::UNKNOWN;
-            if (deviceType == "light") type = SPS::Device::Type::LIGHT;
-            else if (deviceType == "projector") type = SPS::Device::Type::PROJECTOR;
-            else if (deviceType == "curtain") type = SPS::Device::Type::CURTAIN;
-            else if (deviceType == "screen") type = SPS::Device::Type::SCREEN;
-            else if (deviceType == "ac") type = SPS::Device::Type::AC;
-            else if (deviceType == "relay") type = SPS::Device::Type::RELAY;
-
-            SPS::Device::State state = SPS::Device::State::UNKNOWN;
-            if (targetState == "on") state = SPS::Device::State::ON;
-            else if (targetState == "off") state = SPS::Device::State::OFF;
-            else if (targetState == "open") state = SPS::Device::State::OPEN;
-            else if (targetState == "close" || targetState == "closed") state = SPS::Device::State::CLOSED;
-            else if (targetState == "opening") state = SPS::Device::State::OPENING;
-            else if (targetState == "closing") state = SPS::Device::State::CLOSING;
-
-            if (type == SPS::Device::Type::UNKNOWN || state == SPS::Device::State::UNKNOWN) {
-                logWarning(QString("Skipping invalid scenario command: device_type=%1, device_id=%2, state=%3")
-                    .arg(deviceType, deviceId, targetState));
+            if (!commands[i].isObject()) {
                 continue;
             }
 
-            scenario.addCommand(ScenarioCommand(order, type, deviceId, state, delayMs));
+            QJsonObject cmdObj = commands[i].toObject();
+            int order = cmdObj["order"].toInt(i);
+            QString deviceType = deviceTypeTextFromJson(cmdObj);
+            QString deviceId = jsonString(cmdObj, {"device_id", "device", "id"});
+            QString channel = jsonString(cmdObj, {"channel", "device_channel", "hardware_id"});
+            if (deviceId.isEmpty()) {
+                deviceId = channel;
+            }
+            int delayMs = cmdObj["delay_ms"].toInt(0);
+            QString commandType = commandTextFromJson(cmdObj);
+            QString targetState = stateTextFromJson(cmdObj);
+
+            const SPS::Device::Type type = SPS::AutoEngine::parseDeviceType(deviceType, deviceId);
+            const SPS::Device::State state = SPS::AutoEngine::parseDeviceState(targetState);
+
+            scenario.addCommand(ScenarioCommand(
+                order,
+                type,
+                deviceId,
+                state,
+                delayMs,
+                commandType,
+                targetState,
+                channel,
+                SPS::AutoEngine::compactCommandJson(cmdObj)));
         }
 
         m_scenarios[id] = scenario;
@@ -374,19 +384,21 @@ bool ScenarioEngine::StopScenario(const QString& scenarioId) {
 bool ScenarioEngine::ControlDevice(uchar deviceId, const QString& action) {
     logInfo(QString("Direct device control: id=%1, action=%2").arg(deviceId).arg(action));
 
-    const SPS::Device::State state = stateFromAction(action);
-    if (state == SPS::Device::State::UNKNOWN) {
-        logWarning(QString("Unsupported direct control action: %1").arg(action));
-        return false;
-    }
+    const SPS::Device::State state = SPS::AutoEngine::parseDeviceState(action);
+    QJsonObject raw;
+    raw["device_id"] = static_cast<int>(deviceId);
+    raw["action"] = action;
+    ScenarioCommand command(0,
+                            SPS::Device::Type::UNKNOWN,
+                            QString::number(deviceId),
+                            state,
+                            0,
+                            state == SPS::Device::State::UNKNOWN ? action : QString(),
+                            state == SPS::Device::State::UNKNOWN ? QString() : action,
+                            QString(),
+                            SPS::AutoEngine::compactCommandJson(raw));
 
-    const DeviceMapEntry* entry = m_deviceMap.find(QString::number(deviceId));
-    if (!entry) {
-        logError(QString("Device id %1 not found in device map").arg(deviceId));
-        return false;
-    }
-
-    return sendControlCommand(entry->type, entry->id, state);
+    return sendControlCommand(command, "direct-control", 0);
 }
 
 /** D-Bus callable. Registers a context trigger for automatic scenario execution. */
@@ -476,7 +488,8 @@ void ScenarioEngine::executeNextCommand() {
         return;
     }
 
-    ScenarioCommand& cmd = scenario.commands[m_execution.currentCommandIndex];
+    const int commandIndex = m_execution.currentCommandIndex;
+    ScenarioCommand& cmd = scenario.commands[commandIndex];
 
     logDebug(QString("Executing command %1/%2 of scenario %3")
         .arg(m_execution.currentCommandIndex + 1)
@@ -486,7 +499,7 @@ void ScenarioEngine::executeNextCommand() {
     emit CommandExecuting(m_execution.scenarioId, m_execution.currentCommandIndex, 
                          QString("Command %1").arg(cmd.order));
 
-    if (!executeCommand(cmd)) {
+    if (!executeCommand(cmd, m_execution.scenarioId, commandIndex)) {
         stopExecution("Command execution failed");
         return;
     }
@@ -502,104 +515,78 @@ void ScenarioEngine::executeNextCommand() {
 }
 
 /** Sends a single command to a device through the ProtocolRouter. */
-bool ScenarioEngine::executeCommand(const ScenarioCommand& cmd) {
-    return sendControlCommand(cmd.deviceType, cmd.deviceId, cmd.targetState);
+bool ScenarioEngine::executeCommand(const ScenarioCommand& cmd,
+                                    const QString& scenarioId,
+                                    int commandIndex) {
+    return sendControlCommand(cmd, scenarioId, commandIndex);
 }
 
-/** Sends a typed control command via the ProtocolRouter D-Bus interface. */
-bool ScenarioEngine::sendControlCommand(SPS::Device::Type deviceType,
-                                        const QString& deviceId, SPS::Device::State state) {
-    if (!m_routerInterface) {
+/** Normalizes and sends a typed control command via the ProtocolRouter D-Bus interface. */
+bool ScenarioEngine::sendControlCommand(const ScenarioCommand& cmd,
+                                        const QString& scenarioId,
+                                        int commandIndex) {
+    if (!m_routerInterface || !m_routerInterface->isValid()) {
         logError("ProtocolRouter not connected");
         return false;
     }
 
-    const DeviceMapEntry* entry = m_deviceMap.find(deviceId);
-    if (!entry) {
-        logError(QString("Unknown device_id '%1' - cannot send command (type=%2, state=%3)")
-            .arg(deviceId)
-            .arg(static_cast<int>(deviceType))
-            .arg(static_cast<int>(state)));
+    SPS::AutoEngine::NormalizedRouterCommand routerCommand;
+    QString error;
+    const QString rawJson = cmd.rawJson.isEmpty()
+        ? QString("{device_id=%1,type=%2,state=%3,command=%4}")
+            .arg(cmd.deviceId)
+            .arg(static_cast<int>(cmd.deviceType))
+            .arg(static_cast<int>(cmd.targetState))
+            .arg(cmd.commandType)
+        : cmd.rawJson;
+
+    if (!SPS::AutoEngine::normalizeRouterCommand(cmd, m_deviceMap, routerCommand, error)) {
+        logError(QString("Scenario command normalization failed: scenario_id=%1, command_index=%2, "
+                         "raw=%3, normalized_device=%4, normalized_action=%5, normalized_state=%6, error=%7")
+            .arg(scenarioId)
+            .arg(commandIndex)
+            .arg(rawJson)
+            .arg(routerCommand.normalizedDevice)
+            .arg(routerCommand.normalizedAction)
+            .arg(routerCommand.normalizedState)
+            .arg(error));
         return false;
     }
 
-    if (entry->type != deviceType) {
-        logError(QString("Device type mismatch for '%1': scenario type=%2, mapped type=%3")
-            .arg(deviceId)
-            .arg(static_cast<int>(deviceType))
-            .arg(static_cast<int>(entry->type)));
-        return false;
-    }
+    logInfo(QString("Scenario command dispatch: scenario_id=%1, command_index=%2, raw_id=%3 -> "
+                    "normalized_device=%4, normalized_action=%5, normalized_state=%6 -> router call %7; raw=%8")
+        .arg(scenarioId)
+        .arg(commandIndex)
+        .arg(cmd.deviceId)
+        .arg(routerCommand.normalizedDevice)
+        .arg(routerCommand.normalizedAction)
+        .arg(routerCommand.normalizedState)
+        .arg(SPS::AutoEngine::describeRouterCommand(routerCommand))
+        .arg(rawJson));
 
-    if (!DeviceMap::validateAction(entry->type, state)) {
-        logError(QString("Action %1 is not compatible with device '%2' of type %3")
-            .arg(static_cast<int>(state))
-            .arg(deviceId)
-            .arg(static_cast<int>(entry->type)));
-        return false;
-    }
-
-    bool on = false;
-    SPS::UART::ControlValue action = SPS::UART::ControlValue::OFF;
-    switch (state) {
-        case SPS::Device::State::ON:
-        case SPS::Device::State::OPEN:
-        case SPS::Device::State::OPENING:
-            on = true;
-            action = SPS::UART::ControlValue::OPEN;
-            break;
-        case SPS::Device::State::OFF:
-        case SPS::Device::State::CLOSED:
-        case SPS::Device::State::CLOSING:
-            on = false;
-            action = SPS::UART::ControlValue::CLOSE;
-            break;
-        default:
-            logWarning(QString("Unhandled state %1, defaulting to OFF").arg(static_cast<int>(state)));
-            break;
-    }
-
-    uchar id = static_cast<uchar>(entry->channel);
-    QString method = entry->method;
-    QVariantList args;
-
-    if (method == "ControlLight") {
-        args = {
-            QVariant::fromValue(static_cast<quint8>(id)),
-            on
-        };
-    } else if (method == "ControlCurtain") {
-        args = {
-            QVariant::fromValue(static_cast<quint8>(id)),
-            QVariant::fromValue(static_cast<quint8>(SPS::UART::toByte(action)))
-        };
-    } else if (method == "ControlProjector") {
-        args = { on };
-    } else if (method == "ControlAC") {
-        args = {
-            QVariant::fromValue(static_cast<quint8>(id)),
-            on
-        };
-    } else {
-        logError(QString("Unknown control method '%1' for device '%2'")
-            .arg(method, deviceId));
-        return false;
-    }
-
-    logDebug(QString("Sending typed command: method=%1, type=%2, device=%3 (channel=%4), state=%5")
-        .arg(method)
-        .arg(static_cast<int>(deviceType))
-        .arg(deviceId)
-        .arg(id)
-        .arg(static_cast<int>(state)));
-
-    QDBusMessage reply = m_routerInterface->callWithArgumentList(QDBus::Block, method, args);
+    QDBusMessage reply = m_routerInterface->callWithArgumentList(
+        QDBus::Block, routerCommand.method, routerCommand.args);
     if (reply.type() == QDBusMessage::ErrorMessage) {
-        logError(QString("%1 D-Bus call failed: %2").arg(method, reply.errorMessage()));
+        logError(QString("%1 D-Bus call failed: scenario_id=%2, command_index=%3, raw=%4, error=%5")
+            .arg(routerCommand.method)
+            .arg(scenarioId)
+            .arg(commandIndex)
+            .arg(rawJson)
+            .arg(reply.errorMessage()));
         return false;
     }
 
-    return !reply.arguments().isEmpty() && reply.arguments().at(0).toBool();
+    if (reply.arguments().isEmpty() || !reply.arguments().at(0).toBool()) {
+        logError(QString("%1 returned false: scenario_id=%2, command_index=%3, raw=%4, normalized=%5")
+            .arg(routerCommand.method)
+            .arg(scenarioId)
+            .arg(commandIndex)
+            .arg(rawJson)
+            .arg(SPS::AutoEngine::describeRouterCommand(routerCommand)));
+        return false;
+    }
+
+    return true;
 }
 
 /** Creates and validates the D-Bus interface to the ProtocolRouter service. */
@@ -612,6 +599,26 @@ bool ScenarioEngine::connectToRouter() {
         logWarning("ProtocolRouter D-Bus interface not available yet");
         return false;
     }
+
+    QDBusConnection dbus = QDBusConnection::systemBus();
+    dbus.connect(SPS::DBus::SERVICE_ROUTER,
+                 SPS::DBus::PATH_ROUTER,
+                 SPS::DBus::IFACE_ROUTER,
+                 "CommandAcknowledged",
+                 this,
+                 SLOT(onRouterCommandAck(uchar)));
+    dbus.connect(SPS::DBus::SERVICE_ROUTER,
+                 SPS::DBus::PATH_ROUTER,
+                 SPS::DBus::IFACE_ROUTER,
+                 "CommandError",
+                 this,
+                 SLOT(onRouterCommandError(uchar,uchar)));
+    dbus.connect(SPS::DBus::SERVICE_ROUTER,
+                 SPS::DBus::PATH_ROUTER,
+                 SPS::DBus::IFACE_ROUTER,
+                 "PresenceDetected",
+                 this,
+                 SLOT(onPresenceDetected(bool)));
 
     logInfo("Connected to ProtocolRouter via D-Bus");
     return true;
@@ -687,6 +694,12 @@ void ScenarioEngine::onRouterCommandAck(uchar cmdId) {
 void ScenarioEngine::onRouterCommandError(uchar cmdId, uchar errorCode) {
     logError(QString("Router error: cmd=0x%1, code=0x%2")
         .arg(cmdId, 2, 16, QChar('0')).arg(errorCode, 2, 16, QChar('0')));
+
+    if (m_execution.state == RUNNING) {
+        stopExecution(QString("Router command failed: cmd=0x%1, code=0x%2")
+            .arg(cmdId, 2, 16, QChar('0'))
+            .arg(errorCode, 2, 16, QChar('0')));
+    }
 }
 
 /** Handles presence detection events to trigger context scenarios. */
@@ -725,33 +738,26 @@ void ScenarioEngine::onRemoteCommandReceived(const QString& commandType, const Q
         return;
     }
 
-    const QString action = jsonString(object, {"action", "state", "status", "target_state"});
-    const SPS::Device::State state = stateFromAction(action);
-    if (state == SPS::Device::State::UNKNOWN) {
-        logWarning(QString("Remote %1 command has unsupported action/state: %2")
-            .arg(normalizedCommand, action));
-        return;
-    }
-
-    const QString typeText = jsonString(object, {"device_type", "type"});
-    const SPS::Device::Type deviceType = deviceTypeFromString(typeText, normalizedCommand);
-    if (deviceType == SPS::Device::Type::UNKNOWN) {
-        logWarning(QString("Remote command has unsupported device type: %1").arg(typeText));
-        return;
-    }
-
-    QString deviceId = jsonString(object, {"device_id", "device", "id", "channel", "hardware_id", "device_channel"});
+    QString deviceId = jsonString(object, {"device_id", "device", "id"});
+    const QString channel = jsonString(object, {"channel", "hardware_id", "device_channel"});
     if (deviceId.isEmpty()) {
-        logError("Remote command has no device_id");
-        return;
+        deviceId = channel;
     }
 
-    if (!m_deviceMap.contains(deviceId)) {
-        logError(QString("Remote command references unknown device_id '%1'").arg(deviceId));
-        return;
-    }
+    const QString typeText = deviceTypeTextFromJson(object);
+    const QString stateText = stateTextFromJson(object);
+    const QString remoteCommandType = commandTextFromJson(object);
+    ScenarioCommand command(0,
+                            SPS::AutoEngine::parseDeviceType(typeText, normalizedCommand),
+                            deviceId,
+                            SPS::AutoEngine::parseDeviceState(stateText),
+                            0,
+                            remoteCommandType,
+                            stateText,
+                            channel,
+                            SPS::AutoEngine::compactCommandJson(object));
 
-    const bool ok = sendControlCommand(deviceType, deviceId, state);
+    const bool ok = sendControlCommand(command, QString("remote:%1").arg(normalizedCommand), 0);
     if (!ok) {
         logError(QString("Failed to execute remote %1 command for device %2")
             .arg(normalizedCommand, deviceId));

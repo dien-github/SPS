@@ -62,14 +62,34 @@ struct ScenarioCommand {
     QString deviceId;
     SPS::Device::State targetState;
     int delayMs;
+    QString commandType;
+    QString rawState;
+    QString channel;
+    QString rawJson;
 
     /** Default constructor: initializes with order 0 and no delay. */
-    ScenarioCommand() : order(0), delayMs(0) {}
+    ScenarioCommand()
+        : order(0),
+          deviceType(SPS::Device::Type::UNKNOWN),
+          targetState(SPS::Device::State::UNKNOWN),
+          delayMs(0) {}
 
     /** Constructor: create a command with sequence, type, device, target state, and optional delay. */
     ScenarioCommand(int seq, SPS::Device::Type type, const QString& dev, 
-                   SPS::Device::State state, int delay = 0)
-        : order(seq), deviceType(type), deviceId(dev), targetState(state), delayMs(delay) {}
+                   SPS::Device::State state, int delay = 0,
+                   const QString& command = QString(),
+                   const QString& stateText = QString(),
+                   const QString& channelText = QString(),
+                   const QString& rawCommandJson = QString())
+        : order(seq),
+          deviceType(type),
+          deviceId(dev),
+          targetState(state),
+          delayMs(delay),
+          commandType(command),
+          rawState(stateText),
+          channel(channelText),
+          rawJson(rawCommandJson) {}
 };
 
 /** Scenario: a sequence of device commands. */

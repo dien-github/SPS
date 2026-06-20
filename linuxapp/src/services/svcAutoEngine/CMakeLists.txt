@@ -11,12 +11,14 @@ set (SOURCES
         main.cpp
         scenario_engine.cpp
         device_map.cpp
+        router_command_normalizer.cpp
         ${DBUS_ADAPTOR_SRCS}
 )
 
 set(HEADERS
 	scenario_engine.h
 	device_map.h
+        router_command_normalizer.h
 )
 
 add_executable(${TARGET_NAME} ${SOURCES} ${HEADERS})

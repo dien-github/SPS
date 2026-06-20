@@ -8,7 +8,7 @@
 #include <QMutex>
 #include <QTimer>
 #include "../common/sps_service_base.h"
-#include "uart_port.h"
+#include "mcu_engine.h"
 
 // Command Response pair
 struct PendingCommand {
@@ -21,7 +21,7 @@ struct PendingCommand {
 };
 
 // Protocol Router Service
-// Manages UART communication with MCU
+// Manages MCU communication through the selected engine
 // Handles command routing, retry logic, and device state
 class ProtocolRouter : public SpsServiceBase {
     Q_OBJECT
@@ -34,7 +34,7 @@ public:
     ~ProtocolRouter();
 
     // Service lifecycle
-    /** Initializes the service: creates UART port, connects signals, and registers D-Bus. */
+    /** Initializes the service: selects an MCU engine, connects signals, and registers D-Bus. */
     bool initialize() override;
     /** Shuts down the service: stops timers, disconnects MCU, and cleans up. */
     void shutdown() override;
@@ -42,11 +42,11 @@ public:
     QString getStatus() const override;
 
     // Connection management
-    /** Opens a UART connection to the MCU on the specified port and sends a heartbeat. */
+    /** Opens the configured MCU engine and sends a heartbeat. */
     bool connectMcu(const QString& portName = "/dev/ttyS0");
     /** Closes the MCU connection and clears the command queue. */
     bool disconnectMcu();
-    /** Returns true if the UART port is open and connected. */
+    /** Returns true if the selected MCU engine is open and connected. */
     bool isConnected() const;
 
     // Getters
@@ -104,12 +104,12 @@ public slots:
     Q_SCRIPTABLE bool DecreaseACTemperature(uchar acId);
 
 protected slots:
-    // UART port signal handlers
+    // MCU engine signal handlers
     /** Handles an incoming UART frame from the MCU. */
     void onFrameReceived(const UartFrame& frame);
-    /** Handles a UART port error. */
+    /** Handles an MCU engine error. */
     void onPortError(const QString& error);
-    /** Updates connection state when the UART port connects or disconnects. */
+    /** Updates connection state when the MCU engine connects or disconnects. */
     void onConnectionStatusChanged(bool connected);
 
     // Internal timers and processing
@@ -139,6 +139,14 @@ private:
     /** Returns the cached status for a device, or 0xFF if unknown. */
     uchar getCachedDeviceStatus(uchar deviceId) const;
 
+    // MCU engine selection
+    /** Installs a new MCU engine implementation and connects router signal handlers. */
+    void installMcuEngine(IMcuEngine* engine);
+    /** Opens the physical UART MCU engine. */
+    bool connectUartEngine(const QString& portName);
+    /** Opens the virtual MCU engine. */
+    bool connectVirtualEngine();
+
     // OTA handling
     /** Starts an OTA transfer by queueing the OTA_START command. */
     bool startOtaTransfer(uint firmwareSize);
@@ -149,11 +157,12 @@ private:
 
     // Configuration
     QString m_uartPortName;
+    QString m_mcuMode;
     int m_commandTimeoutMs;
     int m_defaultRetries;
 
-    // UART communication
-    UartPort* m_uartPort;
+    // MCU communication
+    IMcuEngine* m_mcuEngine;
     bool m_isConnected;
     bool m_reconnecting;
 

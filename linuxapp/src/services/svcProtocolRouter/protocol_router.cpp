@@ -2,16 +2,42 @@
 #include "../common/sps_logger.h"
 #include "../common/sps_runtime_config.h"
 #include "sps_uart_protocol.h"
+#include <QDateTime>
 #include <QThread>
 #include <QTimer>
+
+namespace {
+
+QString resolveMcuMode() {
+    const QString rawMode = SPS::Runtime::envString("SPS_MCU_MODE").trimmed().toLower();
+
+    if (rawMode.isEmpty()) {
+        Logger::instance().warning(
+            "MCU_ENGINE",
+            "SPS_MCU_MODE not set; defaulting to auto. Production/systemd should set SPS_MCU_MODE explicitly.");
+        return "auto";
+    }
+
+    if (rawMode == "uart" || rawMode == "virtual" || rawMode == "auto") {
+        return rawMode;
+    }
+
+    Logger::instance().warning(
+        "MCU_ENGINE",
+        QString("Invalid SPS_MCU_MODE=%1; defaulting to auto").arg(rawMode));
+    return "auto";
+}
+
+} // namespace
 
 /** Constructor. Initializes member variables, connects the retry timer, and logs startup. */
 ProtocolRouter::ProtocolRouter(QObject* parent)
     : SpsServiceBase("com.sps.router", "/com/sps/router", parent),
       m_uartPortName(SPS::Runtime::envString("SPS_UART_PORT", UART::DEFAULT_PORT)),
+      m_mcuMode("auto"),
       m_commandTimeoutMs(1000),
       m_defaultRetries(3),
-      m_uartPort(nullptr),
+      m_mcuEngine(nullptr),
       m_isConnected(false),
       m_reconnecting(false),
       m_commandPending(false),
@@ -37,26 +63,14 @@ ProtocolRouter::~ProtocolRouter() {
     shutdown();
 }
 
-/** Initializes the service: creates UART port, connects signals, and registers D-Bus. */
+/** Initializes the service: selects an MCU engine, connects signals, and registers D-Bus. */
 bool ProtocolRouter::initialize() {
     logInfo("Initializing Protocol Router service...");
 
-    // Create UART port
-    m_uartPort = new UartPort(this);
-    logInfo(QString("UART config: port=%1, baud=%2, available=[%3]")
-        .arg(m_uartPortName)
-        .arg(UART::BAUDRATE)
-        .arg(UartPort::getAvailablePorts().join(", ")));
-
-    // Connect UART signals
-    connect(m_uartPort, &UartPort::frameReceived, this, &ProtocolRouter::onFrameReceived);
-    connect(m_uartPort, &UartPort::errorOccurred, this, &ProtocolRouter::onPortError);
-    connect(m_uartPort, &UartPort::connectionStatusChanged, 
-            this, &ProtocolRouter::onConnectionStatusChanged);
-
-    // Connect MCU
+    // Connect MCU through the selected engine.
     if (!connectMcu(m_uartPortName)) {
-        logWarning("Failed to connect MCU on startup - will retry");
+        logError("Failed to connect MCU on startup");
+        return false;
     }
 
     // Register D-Bus service
@@ -77,13 +91,13 @@ void ProtocolRouter::shutdown() {
 
     m_retryTimer.stop();
 
-    if (m_isConnected) {
+    if (m_mcuEngine && m_mcuEngine->isOpen()) {
         disconnectMcu();
     }
 
-    if (m_uartPort) {
-        m_uartPort->deleteLater();
-        m_uartPort = nullptr;
+    if (m_mcuEngine) {
+        m_mcuEngine->deleteLater();
+        m_mcuEngine = nullptr;
     }
 
     SpsServiceBase::shutdown();
@@ -99,33 +113,93 @@ QString ProtocolRouter::getStatus() const {
         .arg(m_totalRetries);
 }
 
-/** Opens a UART connection to the MCU on the specified port and sends a heartbeat. */
+/** Opens the configured MCU engine and sends a heartbeat. */
 bool ProtocolRouter::connectMcu(const QString& portName) {
     m_uartPortName = SPS::Runtime::envString("SPS_UART_PORT", portName);
+    m_mcuMode = resolveMcuMode();
 
-    if (!m_uartPort) {
-        logError("UART port not initialized");
-        return false;
+    if (m_mcuMode == "virtual") {
+        return connectVirtualEngine();
     }
 
-    if (!m_uartPort->openPort(m_uartPortName)) {
-        logError(QString("Failed to open UART port: %1").arg(m_uartPortName));
+    if (m_mcuMode == "uart") {
+        Logger::instance().info("MCU_ENGINE", "mode=uart");
+        return connectUartEngine(m_uartPortName);
+    }
+
+    if (connectUartEngine(m_uartPortName)) {
+        Logger::instance().info("MCU_ENGINE", "mode=auto selected=uart");
+        return true;
+    }
+
+    const QString uartError = m_mcuEngine ? m_mcuEngine->lastError() : "unknown error";
+    Logger::instance().warning(
+        "MCU_ENGINE",
+        QString("mode=auto selected=virtual reason=\"UART unavailable on %1: %2\"")
+            .arg(m_uartPortName, uartError));
+
+    return connectVirtualEngine();
+}
+
+/** Installs a new MCU engine implementation and connects common signal handlers. */
+void ProtocolRouter::installMcuEngine(IMcuEngine* engine) {
+    if (m_mcuEngine) {
+        m_mcuEngine->disconnect(this);
+        if (m_mcuEngine->isOpen()) {
+            m_mcuEngine->close();
+        }
+        m_mcuEngine->deleteLater();
+    }
+
+    m_mcuEngine = engine;
+    m_isConnected = false;
+
+    connect(m_mcuEngine, &IMcuEngine::frameReceived, this, &ProtocolRouter::onFrameReceived);
+    connect(m_mcuEngine, &IMcuEngine::errorOccurred, this, &ProtocolRouter::onPortError);
+    connect(m_mcuEngine, &IMcuEngine::connectionStatusChanged,
+            this, &ProtocolRouter::onConnectionStatusChanged);
+}
+
+/** Opens the physical UART MCU engine. */
+bool ProtocolRouter::connectUartEngine(const QString& portName) {
+    installMcuEngine(new UartMcuEngine(this));
+
+    logInfo(QString("UART config: port=%1, baud=%2, available=[%3]")
+        .arg(portName)
+        .arg(UART::BAUDRATE)
+        .arg(UartMcuEngine::getAvailablePorts().join(", ")));
+
+    if (!m_mcuEngine->open(portName)) {
+        logError(QString("Failed to open UART port: %1 (%2)")
+            .arg(portName, m_mcuEngine->lastError()));
         emit ConnectionStatusChanged("DISCONNECTED");
         return false;
     }
 
-    logInfo(QString("Connected to MCU on port: %1").arg(m_uartPortName));
-
-    // Send heartbeat to verify connection
+    logInfo(QString("Connected to MCU on port: %1").arg(portName));
     SendCommand(static_cast<uchar>(UART::CommandId::PING_HEARTBEAT), QByteArray());
+    return true;
+}
 
+/** Opens the virtual MCU engine without touching a serial port. */
+bool ProtocolRouter::connectVirtualEngine() {
+    installMcuEngine(new VirtualMcuEngine(this));
+
+    if (!m_mcuEngine->open(QString())) {
+        logError(QString("Failed to open virtual MCU engine: %1").arg(m_mcuEngine->lastError()));
+        emit ConnectionStatusChanged("DISCONNECTED");
+        return false;
+    }
+
+    logWarning("Using VirtualMcuEngine; no serial port will be opened");
+    SendCommand(static_cast<uchar>(UART::CommandId::PING_HEARTBEAT), QByteArray());
     return true;
 }
 
 /** Closes the MCU connection and clears the command queue. */
 bool ProtocolRouter::disconnectMcu() {
-    if (m_uartPort && m_uartPort->isOpen()) {
-        m_uartPort->closePort();
+    if (m_mcuEngine && m_mcuEngine->isOpen()) {
+        m_mcuEngine->close();
         logInfo("MCU disconnected");
     }
 
@@ -138,9 +212,9 @@ bool ProtocolRouter::disconnectMcu() {
     return true;
 }
 
-/** Returns true if the UART port is open and connected. */
+/** Returns true if the selected MCU engine is open and connected. */
 bool ProtocolRouter::isConnected() const {
-    return m_isConnected && m_uartPort && m_uartPort->isOpen();
+    return m_isConnected && m_mcuEngine && m_mcuEngine->isOpen();
 }
 
 /** Returns the current connection status as a string (CONNECTED/RECONNECTING/DISCONNECTED). */
@@ -349,7 +423,7 @@ bool ProtocolRouter::sendPendingCommand() {
         .arg(frame.size()));
     logDebug(QString("UART TX: %1").arg(QString::fromLatin1(frame.toHex(' ').toUpper())));
 
-    if (!m_uartPort->sendFrame(frame)) {
+    if (!m_mcuEngine || !m_mcuEngine->sendFrame(frame)) {
         logError("Failed to send frame");
         retryPendingCommand();
         return false;
@@ -534,9 +608,9 @@ void ProtocolRouter::onFrameReceived(const UartFrame& frame) {
     handleMcuResponse(frame);
 }
 
-/** Slot. Handles a UART port error and emits ConnectionStatusChanged(ERROR). */
+/** Slot. Handles an MCU engine error and emits ConnectionStatusChanged(ERROR). */
 void ProtocolRouter::onPortError(const QString& error) {
-    logError(QString("UART error: %1").arg(error));
+    logError(QString("MCU engine error: %1").arg(error));
     emit ConnectionStatusChanged("ERROR");
 }
 

@@ -10,6 +10,7 @@ qt_add_dbus_adaptor(DBUS_ADAPTOR_SRCS
 set (SOURCES
         main.cpp
         protocol_router.cpp
+        mcu_engine.cpp
         uart_port.cpp
 	uart_frame.cpp
         ${DBUS_ADAPTOR_SRCS}
@@ -17,6 +18,7 @@ set (SOURCES
 
 set(HEADERS
         protocol_router.h
+        mcu_engine.h
 	uart_port.h
         uart_frame.h
 	uart_defines.h

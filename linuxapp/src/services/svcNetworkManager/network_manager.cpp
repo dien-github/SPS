@@ -676,40 +676,56 @@ void NetworkManager::processTopicMessage(const QString& topic, const QByteArray&
 
     QJsonObject payload = doc.object();
 
-    // Extract room ID from topic
+    // Extract roomId and deviceKey from topic: sps/<roomId>/cmd/<deviceKey>
     QStringList parts = topic.split("/");
-    if (parts.size() < 3) return;
+    if (parts.size() < 4) return;
 
-    // Route based on command type
-    if (topic.contains("/cmd/projector")) {
-        handleProjectorCommand(parts[1], payload);
-    } else if (topic.contains("/cmd/relay")) {
-        handleRelayCommand(parts[1], payload);
-    } else if (topic.contains("/cmd/ac")) {
-        handleAcCommand(parts[1], payload);
-    } else if (topic.contains("/cmd/sync")) {
-        handleSyncCommand(parts[1], payload);
-    } else if (topic.contains("/cmd/ota")) {
-        handleOtaCommand(parts[1], payload);
+    const QString topicRoomId = parts[1];
+    const QString deviceKey = parts[3];
+
+    // Validate room ID if local room is configured
+    if (!m_roomId.isEmpty() && topicRoomId != m_roomId) {
+        logWarning(QString("Room mismatch: topic=%1, topic_room=%2, local_room=%3")
+            .arg(topic, topicRoomId, m_roomId));
+        return;
+    }
+
+    // Attach room_id metadata for downstream validation
+    payload["room_id"] = topicRoomId;
+
+    if (deviceKey == "projector") {
+        handleProjectorCommand(topicRoomId, deviceKey, payload);
+    } else if (deviceKey == "relay") {
+        handleRelayCommand(topicRoomId, deviceKey, payload);
+    } else if (deviceKey == "ac") {
+        handleAcCommand(topicRoomId, deviceKey, payload);
+    } else if (deviceKey == "sync") {
+        handleSyncCommand(topicRoomId, payload);
+    } else if (deviceKey == "ota") {
+        handleOtaCommand(topicRoomId, payload);
+    } else {
+        logInfo(QString("Remote command topic=%1, room=%2, device=%3")
+            .arg(topic, topicRoomId, deviceKey));
+        emit CommandReceived(deviceKey, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     }
 }
 
 /** Logs the projector command and emits a generic CommandReceived signal. */
-void NetworkManager::handleProjectorCommand(const QString& roomId, const QJsonObject& data) {
-    logInfo(QString("Projector command from %1: %2").arg(roomId).arg(data["action"].toString()));
-    emit CommandReceived("projector", QJsonDocument(data).toJson(QJsonDocument::Compact));
+void NetworkManager::handleProjectorCommand(const QString& roomId, const QString& deviceKey, const QJsonObject& data) {
+    logInfo(QString("Projector command room=%1 device=%2: %3").arg(roomId, deviceKey, data["action"].toString()));
+    emit CommandReceived(deviceKey, QJsonDocument(data).toJson(QJsonDocument::Compact));
 }
 
 /** Logs the relay command and emits a generic CommandReceived signal. */
-void NetworkManager::handleRelayCommand(const QString& roomId, const QJsonObject& data) {
-    logInfo(QString("Relay command from %1: %2").arg(roomId).arg(data["action"].toString()));
-    emit CommandReceived("relay", QJsonDocument(data).toJson(QJsonDocument::Compact));
+void NetworkManager::handleRelayCommand(const QString& roomId, const QString& deviceKey, const QJsonObject& data) {
+    logInfo(QString("Relay command room=%1 device=%2: %3").arg(roomId, deviceKey, data["action"].toString()));
+    emit CommandReceived(deviceKey, QJsonDocument(data).toJson(QJsonDocument::Compact));
 }
 
 /** Logs the AC command and emits a generic CommandReceived signal. */
-void NetworkManager::handleAcCommand(const QString& roomId, const QJsonObject& data) {
-    logInfo(QString("AC command from %1: %2").arg(roomId).arg(data["action"].toString()));
-    emit CommandReceived("ac", QJsonDocument(data).toJson(QJsonDocument::Compact));
+void NetworkManager::handleAcCommand(const QString& roomId, const QString& deviceKey, const QJsonObject& data) {
+    logInfo(QString("AC command room=%1 device=%2: %3").arg(roomId, deviceKey, data["action"].toString()));
+    emit CommandReceived(deviceKey, QJsonDocument(data).toJson(QJsonDocument::Compact));
 }
 
 /** Logs the sync command and emits the SyncDataReceived signal with the data. */

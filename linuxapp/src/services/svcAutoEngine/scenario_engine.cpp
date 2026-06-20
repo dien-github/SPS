@@ -744,6 +744,21 @@ void ScenarioEngine::onRemoteCommandReceived(const QString& commandType, const Q
         deviceId = channel;
     }
 
+    // Strip room prefix from global device IDs (e.g., "A01.01-ac" → "ac")
+    // when room metadata from netmgr matches the prefix portion.
+    const QString roomMeta = jsonString(object, {"room_id"});
+    if (!roomMeta.isEmpty() && deviceId.contains('-')) {
+        const int dashPos = deviceId.indexOf('-');
+        const QString possibleRoom = deviceId.left(dashPos);
+        const QString possibleDevice = deviceId.mid(dashPos + 1);
+        if (possibleRoom == roomMeta &&
+            SPS::AutoEngine::parseDeviceType(possibleDevice) != SPS::Device::Type::UNKNOWN) {
+            logInfo(QString("Stripped room prefix from device_id: '%1' -> '%2'")
+                .arg(deviceId, possibleDevice));
+            deviceId = possibleDevice;
+        }
+    }
+
     const QString typeText = deviceTypeTextFromJson(object);
     const QString stateText = stateTextFromJson(object);
     const QString remoteCommandType = commandTextFromJson(object);
@@ -759,7 +774,7 @@ void ScenarioEngine::onRemoteCommandReceived(const QString& commandType, const Q
 
     const bool ok = sendControlCommand(command, QString("remote:%1").arg(normalizedCommand), 0);
     if (!ok) {
-        logError(QString("Failed to execute remote %1 command for device %2")
-            .arg(normalizedCommand, deviceId));
+        logError(QString("Failed to execute remote %1 command for device %2: raw_device=%3, room=%4")
+            .arg(normalizedCommand, deviceId, jsonString(object, {"device_id", "device", "id"}), roomMeta));
     }
 }

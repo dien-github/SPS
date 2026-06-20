@@ -140,11 +140,11 @@ protected slots:
 
 private:
     /** Handles a projector command received via MQTT. */
-    void handleProjectorCommand(const QString& roomId, const QJsonObject& data);
+    void handleProjectorCommand(const QString& roomId, const QString& deviceKey, const QJsonObject& data);
     /** Handles a relay command received via MQTT. */
-    void handleRelayCommand(const QString& roomId, const QJsonObject& data);
+    void handleRelayCommand(const QString& roomId, const QString& deviceKey, const QJsonObject& data);
     /** Handles an AC command received via MQTT. */
-    void handleAcCommand(const QString& roomId, const QJsonObject& data);
+    void handleAcCommand(const QString& roomId, const QString& deviceKey, const QJsonObject& data);
     /** Handles a sync command and emits the received lecturer data. */
     void handleSyncCommand(const QString& roomId, const QJsonObject& syncData);
     /** Handles an OTA command and emits the firmware URL. */

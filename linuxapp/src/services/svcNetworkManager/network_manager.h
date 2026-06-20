@@ -75,10 +75,8 @@ signals:
     void NetworkStatusChanged(bool connected);
     /** Emitted when a device status update is received. */
     void DeviceStatusUpdated(const QString& deviceId, const QString& status);
-    /** Emitted when a command is received via MQTT. */
+    /** Emitted when a command is received via MQTT (projector, relay, ac, sync, ota, etc). */
     void CommandReceived(const QString& command, const QByteArray& payload);
-    /** Emitted when lecturer sync data is received. */
-    void SyncDataReceived(const QJsonObject& lecturerData);
     /** Emitted when an OTA update command is received. */
     void OtaCommandReceived(const QString& firmwareUrl);
 

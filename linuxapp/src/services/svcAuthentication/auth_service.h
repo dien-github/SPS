@@ -54,6 +54,9 @@ signals:
     /** Emitted when a room monitoring condition triggers an alert (ROOM_USAGE_OVERRUN, OUT_OF_SCHOOL_HOURS). */
     void RoomMonitorAlert(const QString& alertType, const QString& payloadJson);
 
+    /** Emitted after a successful lecturer list sync with the number of loaded lecturers. */
+    void LecturerListUpdated(int lecturerCount);
+
 public slots:
     /** D-Bus callable: returns the current authentication status integer. */
     Q_SCRIPTABLE int GetAuthStatus() const;
@@ -66,6 +69,9 @@ public slots:
 
     /** D-Bus callable: marks the room as active when a scenario executes or device turns on. */
     Q_SCRIPTABLE bool SetRoomActive();
+
+    /** D-Bus callable: replaces the lecturer database with synced data from the server. */
+    Q_SCRIPTABLE bool SyncLecturerList(const QByteArray& payload);
 
     /** Handles an incoming RFID read from the reader hardware. */
     void onRfidRead(const QString& rfidData);
@@ -95,6 +101,8 @@ private:
 
     /** Loads lecturer RFID entries from a JSON file on disk. */
     bool loadLecturerDatabase();
+    /** Persists the current lecturer database to disk as JSON. */
+    bool saveLecturerDatabase();
     /** Looks up an RFID in the database and checks if the lecturer is authorized. */
     bool verifyLecturerRfid(const QString& rfidData, Lecturer& lecturer);
     /** Returns true if the RFID string has valid format (alphanumeric, 1-50 chars). */

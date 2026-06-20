@@ -32,7 +32,18 @@
       <!-- Marks the room as active for session monitoring (called when a scenario executes or device turns on) -->
     </method>
 
+    <method name="SyncLecturerList">
+      <arg type="ay" direction="in" name="payload"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Replaces the lecturer database with server-provided JSON array/object payload -->
+    </method>
+
     <!-- Signals -->
+    <signal name="LecturerListUpdated">
+      <arg type="i" name="lecturerCount"/>
+      <!-- Emitted after a successful lecturer list sync -->
+    </signal>
+
     <signal name="AuthStatusChanged">
       <arg type="i" name="newStatus"/>
       <!-- Emitted when authentication status changes -->

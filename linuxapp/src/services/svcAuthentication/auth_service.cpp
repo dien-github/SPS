@@ -235,6 +235,83 @@ bool AuthService::SetRoomActive() {
     return true;
 }
 
+/** D-Bus callable: replaces the lecturer database with synced data from the server. */
+bool AuthService::SyncLecturerList(const QByteArray& payload) {
+    logInfo(QString("SyncLecturerList called with %1 bytes").arg(payload.size()));
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        logError(QString("SyncLecturerList invalid JSON: %1").arg(parseError.errorString()));
+        return false;
+    }
+
+    QJsonArray lecturers;
+    if (doc.isArray()) {
+        lecturers = doc.array();
+    } else if (doc.isObject()) {
+        lecturers = doc.object().value("lecturers").toArray();
+    } else {
+        logError("SyncLecturerList payload is neither JSON array nor object with lecturers key");
+        return false;
+    }
+
+    if (lecturers.isEmpty()) {
+        logError("SyncLecturerList received empty lecturer array – existing database preserved");
+        return false;
+    }
+
+    QMap<QString, Lecturer> newLecturers;
+    int skipped = 0;
+
+    for (const QJsonValue& val : lecturers) {
+        if (!val.isObject()) {
+            skipped++;
+            continue;
+        }
+
+        QJsonObject obj = val.toObject();
+        QString id = obj["id"].toVariant().toString();
+        QString name = obj["name"].toString();
+        QString rfid = obj["rfid"].toString();
+        if (rfid.isEmpty()) rfid = obj["code"].toString();
+        if (rfid.isEmpty()) rfid = obj["card_id"].toString();
+
+        const bool authorized = obj.contains("authorized")
+            ? obj["authorized"].toBool(true)
+            : obj["enabled"].toBool(true);
+
+        if (id.isEmpty() || rfid.isEmpty()) {
+            logWarning(QString("SyncLecturerList skipping row: missing id or RFID (id='%1', rfid='%2')")
+                .arg(id, rfid));
+            skipped++;
+            continue;
+        }
+
+        Lecturer lecturer(id, name, rfid);
+        lecturer.authorized = authorized;
+        newLecturers[rfid] = lecturer;
+    }
+
+    if (newLecturers.isEmpty()) {
+        logError("SyncLecturerList: no valid lecturers in payload – existing database preserved");
+        return false;
+    }
+
+    m_lecturers = newLecturers;
+
+    if (!saveLecturerDatabase()) {
+        logWarning("SyncLecturerList: in-memory update succeeded but persist to disk failed");
+    }
+
+    const int loaded = m_lecturers.size();
+    logInfo(QString("Lecturer list synced: %1 lecturers loaded%2")
+        .arg(loaded)
+        .arg(skipped > 0 ? QString(", %1 skipped").arg(skipped) : QString()));
+    emit LecturerListUpdated(loaded);
+    return true;
+}
+
 /** Periodically checks room usage conditions and publishes alerts when triggered. */
 void AuthService::onMonitorTimer() {
     if (m_status != UNLOCKED) {
@@ -468,6 +545,31 @@ bool AuthService::loadLecturerDatabase() {
     }
 
     logInfo(QString("Loaded %1 lecturers from database").arg(m_lecturers.size()));
+    return true;
+}
+
+/** Persists the current lecturer database to disk as JSON. */
+bool AuthService::saveLecturerDatabase() {
+    QJsonArray array;
+    for (auto it = m_lecturers.constBegin(); it != m_lecturers.constEnd(); ++it) {
+        const Lecturer& lec = it.value();
+        QJsonObject obj;
+        obj["id"] = lec.id;
+        obj["name"] = lec.name;
+        obj["rfid"] = lec.rfidCard;
+        obj["authorized"] = lec.authorized;
+        array.append(obj);
+    }
+
+    QFile file(m_databasePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        logError(QString("Cannot write lecturer database: %1").arg(m_databasePath));
+        return false;
+    }
+
+    file.write(QJsonDocument(array).toJson(QJsonDocument::Indented));
+    file.close();
+    logInfo(QString("Saved %1 lecturers to %2").arg(array.size()).arg(m_databasePath));
     return true;
 }
 

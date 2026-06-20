@@ -1,11 +1,14 @@
 #include "network_manager.h"
 #include "../common/sps_logger.h"
 #include "../common/sps_runtime_config.h"
+#include "../common/sps_constants.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QDateTime>
+#include <QDBusInterface>
+#include <QDBusReply>
 #include <QNetworkInterface>
 #include <QProcess>
 #include <QRegularExpression>
@@ -728,10 +731,28 @@ void NetworkManager::handleAcCommand(const QString& roomId, const QString& devic
     emit CommandReceived(deviceKey, QJsonDocument(data).toJson(QJsonDocument::Compact));
 }
 
-/** Logs the sync command and emits the SyncDataReceived signal with the data. */
+/** Validates room, forwards sync data to AuthService via D-Bus, and emits CommandReceived. */
 void NetworkManager::handleSyncCommand(const QString& roomId, const QJsonObject& syncData) {
-    logInfo(QString("Sync command from %1").arg(roomId));
-    emit SyncDataReceived(syncData);
+    if (!m_roomId.isEmpty() && roomId != m_roomId) {
+        logWarning(QString("Sync room mismatch: topic=%1, local=%2").arg(roomId, m_roomId));
+        return;
+    }
+
+    const QByteArray compactJson = QJsonDocument(syncData).toJson(QJsonDocument::Compact);
+    const int lecturerCount = syncData.value("lecturers").toArray().size();
+
+    QDBusInterface authIface(SPS::DBus::SERVICE_AUTH, SPS::DBus::PATH_AUTH,
+                             SPS::DBus::IFACE_AUTH, QDBusConnection::systemBus());
+    QDBusReply<bool> reply = authIface.call("SyncLecturerList", compactJson);
+    if (reply.isValid() && reply.value()) {
+        logInfo(QString("Sync OK: room=%1, payload=%2 bytes, lecturers=%3")
+            .arg(roomId).arg(compactJson.size()).arg(lecturerCount));
+    } else {
+        logWarning(QString("Sync DBus call failed: room=%1, payload=%2 bytes, error=%3")
+            .arg(roomId).arg(compactJson.size()).arg(reply.error().message()));
+    }
+
+    emit CommandReceived("sync", compactJson);
 }
 
 /** Logs the OTA command and emits the OtaCommandReceived signal with the firmware URL. */

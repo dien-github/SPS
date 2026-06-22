@@ -582,13 +582,8 @@ void NetworkManager::onMqttConnected() {
     logInfo("MQTT connected successfully");
     emit MqttConnected();
 
-    // Subscribe to control topics
-    QString baseTopics = QString("sps/%1/cmd/").arg(m_roomId);
-    subscribeTopic(baseTopics + "projector", 1);
-    subscribeTopic(baseTopics + "relay", 1);
-    subscribeTopic(baseTopics + "ac", 1);
-    subscribeTopic(baseTopics + "sync", 1);
-    subscribeTopic(baseTopics + "ota", 1);
+    // Subscribe to command topics (single wildcard subscription)
+    subscribeTopic(QString("sps/%1/cmd/#").arg(m_roomId), 1);
     subscribeTopic(QString("sps/%1/status/connection").arg(m_roomId), 0);
 
     QJsonObject payload;
@@ -669,7 +664,7 @@ void NetworkManager::onAuthStatusChanged(const QString& status) {
     publishStatus(m_roomId, status);
 }
 
-/** Parses the JSON message and routes it to the correct command handler based on the topic. */
+/** Parses the JSON message and routes it based on topic category (cmd, status, etc). */
 void NetworkManager::processTopicMessage(const QString& topic, const QByteArray& message) {
     QJsonDocument doc = QJsonDocument::fromJson(message);
     if (!doc.isObject()) {
@@ -677,14 +672,16 @@ void NetworkManager::processTopicMessage(const QString& topic, const QByteArray&
         return;
     }
 
-    QJsonObject payload = doc.object();
-
-    // Extract roomId and deviceKey from topic: sps/<roomId>/cmd/<deviceKey>
+    // Parse topic: sps/<roomId>/<category>/<target>
     QStringList parts = topic.split("/");
     if (parts.size() < 4) return;
 
     const QString topicRoomId = parts[1];
-    const QString deviceKey = parts[3];
+    const QString category = parts[2];
+    const QString target = parts[3];
+
+    logDebug(QString("MQTT message: topic=%1, room=%2, category=%3, target=%4, payload=%5 bytes")
+        .arg(topic, topicRoomId, category, target).arg(message.size()));
 
     // Validate room ID if local room is configured
     if (!m_roomId.isEmpty() && topicRoomId != m_roomId) {
@@ -693,23 +690,29 @@ void NetworkManager::processTopicMessage(const QString& topic, const QByteArray&
         return;
     }
 
-    // Attach room_id metadata for downstream validation
-    payload["room_id"] = topicRoomId;
+    if (category == "cmd") {
+        QJsonObject payload = doc.object();
+        payload["room_id"] = topicRoomId;
 
-    if (deviceKey == "projector") {
-        handleProjectorCommand(topicRoomId, deviceKey, payload);
-    } else if (deviceKey == "relay") {
-        handleRelayCommand(topicRoomId, deviceKey, payload);
-    } else if (deviceKey == "ac") {
-        handleAcCommand(topicRoomId, deviceKey, payload);
-    } else if (deviceKey == "sync") {
-        handleSyncCommand(topicRoomId, payload);
-    } else if (deviceKey == "ota") {
-        handleOtaCommand(topicRoomId, payload);
+        if (target == "projector") {
+            handleProjectorCommand(topicRoomId, target, payload);
+        } else if (target == "relay") {
+            handleRelayCommand(topicRoomId, target, payload);
+        } else if (target == "ac") {
+            handleAcCommand(topicRoomId, target, payload);
+        } else if (target == "sync") {
+            handleSyncCommand(topicRoomId, payload);
+        } else if (target == "ota") {
+            handleOtaCommand(topicRoomId, payload);
+        } else {
+            logInfo(QString("Remote command topic=%1, room=%2, device=%3")
+                .arg(topic, topicRoomId, target));
+            emit CommandReceived(target, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+        }
+    } else if (category == "status") {
+        logDebug(QString("Ignoring status topic: %1").arg(topic));
     } else {
-        logInfo(QString("Remote command topic=%1, room=%2, device=%3")
-            .arg(topic, topicRoomId, deviceKey));
-        emit CommandReceived(deviceKey, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+        logWarning(QString("Unknown MQTT category: topic=%1, category=%2").arg(topic, category));
     }
 }
 

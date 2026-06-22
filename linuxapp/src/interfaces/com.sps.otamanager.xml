@@ -18,6 +18,12 @@
       <!-- Start MCU firmware update from URL -->
     </method>
 
+    <method name="StartUpdate">
+      <arg type="s" direction="in" name="updateJson"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Start generic update from dashboard metadata JSON -->
+    </method>
+
     <method name="StartAppServiceUpdate">
       <arg type="s" direction="in" name="serviceName"/>
       <arg type="s" direction="in" name="packageUrl"/>

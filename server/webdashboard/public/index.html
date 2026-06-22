@@ -613,7 +613,7 @@
       <div class="sidebar-label">Điều hướng</div>
       <button class="page-nav active" type="button" data-page="rooms"><span>Operations Overview</span><span>01</span></button>
       <button class="page-nav" type="button" data-page="lecturers"><span>Lecturer / RFID</span><span>02</span></button>
-      <button class="page-nav" type="button" data-page="firmware"><span>Firmware / OTA</span><span>03</span></button>
+      <button class="page-nav" type="button" data-page="firmware"><span>Update Upload</span><span>03</span></button>
     </aside>
 
     <main class="main">
@@ -731,6 +731,7 @@
                   <option value="audit:lecturer_sync">audit / lecturer_sync</option>
                   <option value="audit:ota_request">audit / ota_request</option>
                   <option value="audit:ota_upload">audit / ota_upload</option>
+                  <option value="audit:update_upload">audit / update_upload</option>
                 </select>
               </div>
               <div>
@@ -811,14 +812,51 @@
           <div class="panel">
             <div class="panel-head">
               <div>
-                <h3>OTA package list</h3>
-                <p class="muted">Các file đang được serve từ OTA_DIR qua /ota.</p>
+                <h3>Update package list</h3>
+                <p class="muted">Các artifact đang được stage trong OTA_DIR và serve qua /ota.</p>
               </div>
             </div>
-            <form id="otaUploadForm" class="form-grid" style="grid-template-columns:1fr auto">
+            <form id="otaUploadForm" class="form-grid" style="grid-template-columns:1fr 1fr">
               <div>
-                <label for="otaFirmwareFile">Upload firmware .bin</label>
-                <input id="otaFirmwareFile" type="file" accept=".bin" required />
+                <label for="otaPackageType">Package type</label>
+                <select id="otaPackageType" required>
+                  <option value="mcu_firmware">MCU firmware OTA</option>
+                  <option value="linuxapp_binary">SBC LinuxApp binary</option>
+                  <option value="config_update">Config update</option>
+                  <option value="release_bundle">Release bundle</option>
+                </select>
+              </div>
+              <div>
+                <label for="otaUploadTarget">Target</label>
+                <select id="otaUploadTarget" required>
+                  <option value="mcu">mcu</option>
+                  <option value="sbc">sbc</option>
+                </select>
+              </div>
+              <div>
+                <label for="otaUploadComponent">Component</label>
+                <input id="otaUploadComponent" placeholder="svcNetworkManager / config" />
+              </div>
+              <div>
+                <label for="otaUploadVersion">Version</label>
+                <input id="otaUploadVersion" placeholder="1.0.1" required />
+              </div>
+              <div>
+                <label for="otaUploadArchitecture">Architecture</label>
+                <select id="otaUploadArchitecture">
+                  <option value="arm64">arm64</option>
+                  <option value="armhf">armhf</option>
+                  <option value="x86_64">x86_64</option>
+                  <option value="noarch">noarch</option>
+                </select>
+              </div>
+              <div>
+                <label for="otaUploadChecksum">Checksum</label>
+                <input id="otaUploadChecksum" placeholder="sha256..." />
+              </div>
+              <div style="grid-column:1 / -1">
+                <label for="otaFirmwareFile">Artifact file</label>
+                <input id="otaFirmwareFile" type="file" accept=".bin,.elf,.json,.tar,.tar.gz,.tgz,.zip,application/octet-stream,application/json,application/gzip,application/x-tar,application/zip" required />
               </div>
               <button class="btn primary" type="submit">Upload</button>
             </form>
@@ -829,14 +867,34 @@
           <div class="panel">
             <div class="panel-head">
               <div>
-                <h3>Rollout request</h3>
-                <p class="muted">Gửi metadata OTA tới room được chọn và ghi audit request.</p>
+                <h3>Update request</h3>
+                <p class="muted">Gửi metadata update tới room được chọn và ghi audit request.</p>
               </div>
             </div>
             <form id="otaForm" class="form-grid" style="grid-template-columns:1fr 1fr">
               <div>
                 <label for="otaRoomSelect">Target room</label>
                 <select id="otaRoomSelect" required></select>
+              </div>
+              <div>
+                <label for="otaRequestPackageType">Package type</label>
+                <select id="otaRequestPackageType" required>
+                  <option value="mcu_firmware">mcu_firmware</option>
+                  <option value="linuxapp_binary">linuxapp_binary</option>
+                  <option value="config_update">config_update</option>
+                  <option value="release_bundle">release_bundle</option>
+                </select>
+              </div>
+              <div>
+                <label for="otaRequestTarget">Target</label>
+                <select id="otaRequestTarget" required>
+                  <option value="mcu">mcu</option>
+                  <option value="sbc">sbc</option>
+                </select>
+              </div>
+              <div>
+                <label for="otaRequestComponent">Component</label>
+                <input id="otaRequestComponent" placeholder="svcNetworkManager / config" />
               </div>
               <div>
                 <label for="otaVersion">Version</label>
@@ -850,7 +908,11 @@
                 <label for="otaChecksum">Checksum</label>
                 <input id="otaChecksum" placeholder="sha256..." />
               </div>
-              <button class="btn primary" type="submit">Request OTA</button>
+              <div>
+                <label for="otaRequestArchitecture">Architecture</label>
+                <input id="otaRequestArchitecture" placeholder="arm64" />
+              </div>
+              <button class="btn primary" type="submit">Request Update</button>
             </form>
             <div class="notice" id="otaNotice"></div>
           </div>
@@ -859,7 +921,7 @@
         <div class="panel">
           <div class="panel-head">
             <div>
-              <h3>Per-room OTA rollout</h3>
+              <h3>Per-room update rollout</h3>
               <p class="muted">Trạng thái và last event lấy từ MQTT/audit events, không tự tạo success.</p>
             </div>
           </div>
@@ -924,6 +986,12 @@
       lecturerNotice: document.getElementById('lecturerNotice'),
       syncRows: document.getElementById('syncRows'),
       otaFiles: document.getElementById('otaFiles'),
+      otaPackageType: document.getElementById('otaPackageType'),
+      otaUploadTarget: document.getElementById('otaUploadTarget'),
+      otaUploadComponent: document.getElementById('otaUploadComponent'),
+      otaUploadVersion: document.getElementById('otaUploadVersion'),
+      otaUploadArchitecture: document.getElementById('otaUploadArchitecture'),
+      otaUploadChecksum: document.getElementById('otaUploadChecksum'),
       otaFirmwareFile: document.getElementById('otaFirmwareFile'),
       otaUploadNotice: document.getElementById('otaUploadNotice'),
       otaRoomSelect: document.getElementById('otaRoomSelect'),
@@ -941,8 +1009,8 @@
         subtitle: 'Quản lý lecturer database và điều phối sync xuống PCD.'
       },
       firmware: {
-        title: 'Firmware / OTA',
-        subtitle: 'Rollout package theo room, xem trạng thái OTA và event gần nhất.'
+        title: 'Update Upload',
+        subtitle: 'Rollout artifact theo room, xem trạng thái update và event gần nhất.'
       }
     };
 
@@ -1078,7 +1146,7 @@
     }
 
     function isOtaEvent(event) {
-      return /ota/i.test(`${event.category}/${event.type}/${event.topic}`);
+      return /(ota|update)/i.test(`${event.category}/${event.type}/${event.topic}`);
     }
 
     function latestEventForRoom(roomId, predicate) {
@@ -1088,6 +1156,30 @@
     function inferVersion(fileName) {
       const match = String(fileName || '').match(/(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.]+)?)/);
       return match ? match[1] : '';
+    }
+
+    function targetForPackageType(packageType) {
+      return packageType === 'mcu_firmware' ? 'mcu' : 'sbc';
+    }
+
+    function syncUploadTarget() {
+      els.otaUploadTarget.value = targetForPackageType(els.otaPackageType.value);
+    }
+
+    function syncRequestTarget() {
+      document.getElementById('otaRequestTarget').value = targetForPackageType(
+        document.getElementById('otaRequestPackageType').value
+      );
+    }
+
+    function applyPackageToRequest(file) {
+      document.getElementById('otaUrl').value = file.url || '';
+      document.getElementById('otaRequestPackageType').value = file.package_type || 'mcu_firmware';
+      document.getElementById('otaRequestTarget').value = file.target || targetForPackageType(file.package_type);
+      document.getElementById('otaRequestComponent').value = file.component || '';
+      document.getElementById('otaVersion').value = file.version || inferVersion(file.file || file.file_name);
+      document.getElementById('otaChecksum').value = file.checksum || '';
+      document.getElementById('otaRequestArchitecture').value = file.architecture || '';
     }
 
     function renderPageHeader() {
@@ -1303,17 +1395,28 @@
 
     function renderOta() {
       if (!state.otaFiles.length) {
-        els.otaFiles.innerHTML = '<div class="empty">Thư mục OTA hiện chưa có file.</div>';
+        els.otaFiles.innerHTML = '<div class="empty">Thư mục update hiện chưa có file.</div>';
       } else {
-        els.otaFiles.innerHTML = state.otaFiles.map((file) => {
-          const version = inferVersion(file.file);
+        els.otaFiles.innerHTML = state.otaFiles.map((file, index) => {
+          const version = file.version || inferVersion(file.file);
+          const meta = [
+            file.package_type,
+            file.target,
+            file.component,
+            version,
+            file.architecture,
+          ].filter(Boolean).join(' · ');
           return `
             <div class="package-item">
               <div>
                 <strong>${escapeHtml(file.file)}</strong>
                 <div class="muted">${escapeHtml(file.url)} · ${formatBytes(file.size)} · ${formatDate(file.uploaded_at)}</div>
+                <div class="muted">${escapeHtml(meta)}${file.checksum ? ` · sha256:${escapeHtml(String(file.checksum).slice(0, 12))}...` : ''}</div>
               </div>
-              <button class="btn" type="button" data-use-package-url="${escapeHtml(file.url)}" data-use-package-version="${escapeHtml(version)}">Use</button>
+              <div style="display:flex;align-items:center;gap:8px">
+                ${file.status ? statusBadge(file.status) : ''}
+                <button class="btn" type="button" data-use-package-index="${index}">Use</button>
+              </div>
             </div>
           `;
         }).join('');
@@ -1341,12 +1444,9 @@
         }).join('')
         : '<tr><td colspan="6" class="muted">Chưa có PCD.</td></tr>';
 
-      els.otaFiles.querySelectorAll('[data-use-package-url]').forEach((button) => {
+      els.otaFiles.querySelectorAll('[data-use-package-index]').forEach((button) => {
         button.addEventListener('click', () => {
-          document.getElementById('otaUrl').value = button.dataset.usePackageUrl;
-          if (button.dataset.usePackageVersion) {
-            document.getElementById('otaVersion').value = button.dataset.usePackageVersion;
-          }
+          applyPackageToRequest(state.otaFiles[Number(button.dataset.usePackageIndex)] || {});
         });
       });
     }
@@ -1502,33 +1602,32 @@
       }
     }
 
-    async function uploadFirmware() {
+    async function uploadUpdate() {
       const file = els.otaFirmwareFile.files[0];
       if (!file) {
-        setNotice(els.otaUploadNotice, 'Chọn file .bin trước khi upload.', 'error');
-        return;
-      }
-      if (!file.name.toLowerCase().endsWith('.bin')) {
-        setNotice(els.otaUploadNotice, 'Chỉ cho phép firmware .bin.', 'error');
+        setNotice(els.otaUploadNotice, 'Chọn artifact trước khi upload.', 'error');
         return;
       }
 
       const formData = new FormData();
-      formData.append('firmware', file);
-      setNotice(els.otaUploadNotice, 'Đang upload firmware...');
+      formData.append('package_type', els.otaPackageType.value);
+      formData.append('target', els.otaUploadTarget.value);
+      formData.append('component', els.otaUploadComponent.value.trim());
+      formData.append('version', els.otaUploadVersion.value.trim());
+      formData.append('architecture', els.otaUploadArchitecture.value);
+      formData.append('checksum', els.otaUploadChecksum.value.trim());
+      formData.append('file', file);
+      setNotice(els.otaUploadNotice, 'uploaded → validating...');
 
       try {
         const data = await requestJson('/api/ota/upload', {
           method: 'POST',
           body: formData
         });
-        setNotice(els.otaUploadNotice, `Uploaded ${data.file} (${formatBytes(data.size)}).`, 'ok');
-        document.getElementById('otaUrl').value = data.url;
-        const version = inferVersion(data.file);
-        if (version) {
-          document.getElementById('otaVersion').value = version;
-        }
+        setNotice(els.otaUploadNotice, `success: ${data.file} (${formatBytes(data.size)}).`, 'ok');
+        applyPackageToRequest(data);
         els.otaFirmwareFile.value = '';
+        els.otaUploadChecksum.value = '';
         await Promise.all([loadOta(), loadEvents()]);
         renderEvents();
         renderOta();
@@ -1545,12 +1644,16 @@
       }
 
       const payload = {
+        package_type: document.getElementById('otaRequestPackageType').value,
+        target: document.getElementById('otaRequestTarget').value,
+        component: document.getElementById('otaRequestComponent').value.trim(),
         version: document.getElementById('otaVersion').value.trim(),
         url: document.getElementById('otaUrl').value.trim(),
-        checksum: document.getElementById('otaChecksum').value.trim()
+        checksum: document.getElementById('otaChecksum').value.trim(),
+        architecture: document.getElementById('otaRequestArchitecture').value.trim()
       };
 
-      setNotice(els.otaNotice, 'Đang request OTA rollout...');
+      setNotice(els.otaNotice, 'Đang request update rollout...');
       try {
         const data = await requestJson(`/api/rooms/${encodeURIComponent(roomId)}/ota`, {
           method: 'POST',
@@ -1558,7 +1661,7 @@
         });
         setNotice(
           els.otaNotice,
-          data.published ? 'OTA request published. Waiting for real OTA events.' : 'Audit recorded, MQTT hiện chưa kết nối.',
+          data.published ? 'Update request published. Waiting for real update events.' : 'Audit recorded, MQTT hiện chưa kết nối.',
           data.published ? 'ok' : ''
         );
       } catch (error) {
@@ -1655,15 +1758,22 @@
       syncAllRooms();
     });
 
+    els.otaPackageType.addEventListener('change', syncUploadTarget);
+
+    document.getElementById('otaRequestPackageType').addEventListener('change', syncRequestTarget);
+
     document.getElementById('otaUploadForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      await uploadFirmware();
+      await uploadUpdate();
     });
 
     document.getElementById('otaForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       await requestOta();
     });
+
+    syncUploadTarget();
+    syncRequestTarget();
 
     refreshAll().catch((error) => {
       setNotice(els.deviceNotice, error.message, 'error');

@@ -758,8 +758,16 @@ void NetworkManager::handleSyncCommand(const QString& roomId, const QJsonObject&
     emit CommandReceived("sync", compactJson);
 }
 
-/** Logs the OTA command and emits the OtaCommandReceived signal with the firmware URL. */
+/** Logs the OTA command and emits the full update metadata JSON. */
 void NetworkManager::handleOtaCommand(const QString& roomId, const QJsonObject& otaData) {
-    logInfo(QString("OTA command from %1: %2").arg(roomId).arg(otaData["url"].toString()));
-    emit OtaCommandReceived(otaData["url"].toString());
+    QJsonObject payload = otaData;
+    payload["room_id"] = roomId;
+    const QByteArray compactJson = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+    logInfo(QString("Update command from %1: type=%2 target=%3 component=%4 url=%5")
+        .arg(roomId,
+             payload["package_type"].toString("mcu_firmware"),
+             payload["target"].toString(),
+             payload["component"].toString(),
+             payload["url"].toString()));
+    emit OtaCommandReceived(compactJson);
 }

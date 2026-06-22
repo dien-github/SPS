@@ -34,6 +34,12 @@ struct OtaUpdateState {
     QString appChecksum;
     QString currentVersion;
     QString errorMessage;
+    QString packageType;
+    QString target;
+    QString component;
+    QString version;
+    QString architecture;
+    QString downloadPath;
     bool cancelled;
 
     /** Constructor. Initializes stage to IDLE, progress to 0, cancelled to false. */
@@ -77,6 +83,8 @@ public slots:
     Q_SCRIPTABLE QString GetOtaStatus() const;
     /** Starts an MCU firmware update from a URL. */
     Q_SCRIPTABLE bool StartMcuFirmwareUpdate(const QString& firmwareUrl, const QString& expectedChecksum);
+    /** Starts a generic update from dashboard JSON metadata. */
+    Q_SCRIPTABLE bool StartUpdate(const QString& updateJson);
     /** Starts an app service binary update from a URL. */
     Q_SCRIPTABLE bool StartAppServiceUpdate(const QString& serviceName, const QString& packageUrl, const QString& expectedChecksum);
     /** Starts a combined MCU + app update sequence. */
@@ -90,7 +98,7 @@ public slots:
     Q_SCRIPTABLE bool CancelUpdate();
 
     /** Handles an OTA command received from NetworkManager. */
-    void onOtaCommandReceived(const QString& firmwareUrl);
+    void onOtaCommandReceived(const QByteArray& updateJson);
     /** Handles connection status changes from ProtocolRouter. */
     void onRouterConnectionStatusChanged(const QString& status);
 
@@ -117,6 +125,34 @@ private:
     bool verifyChecksum(const QString& filePath, const QString& expectedChecksum);
     /** Returns the default download directory path. */
     QString getDefaultDownloadPath() const;
+    /** Emits a user-facing update status message and optional progress. */
+    void emitUpdateStatus(const QString& status, int progress = -1);
+    /** Builds a safe staged download path for an update URL or component. */
+    QString stagedDownloadPath(const QString& url, const QString& fallbackName) const;
+    /** Returns the normalized artifact extension, including compound .tar.gz. */
+    QString artifactExtension(const QString& filePath) const;
+    /** Validates the downloaded artifact for the current package type. */
+    bool validateDownloadedUpdate(const QString& filePath);
+    /** Installs the downloaded artifact using the current package type dispatcher. */
+    bool installDownloadedUpdate(const QString& filePath);
+    /** Installs a LinuxApp binary through the privileged updater helper. */
+    bool installLinuxAppBinary(const QString& component, const QString& filePath);
+    /** Installs a JSON config update through the privileged updater helper. */
+    bool installConfigUpdate(const QString& component, const QString& filePath);
+    /** Installs a release bundle through the privileged updater helper. */
+    bool installReleaseBundle(const QString& bundlePath);
+    /** Reads manifest.json from a tar/tar.gz artifact. */
+    bool readBundleManifest(const QString& bundlePath, QJsonObject* manifest, QStringList* entries = nullptr);
+    /** Extracts a release bundle into a staging directory. */
+    bool extractBundle(const QString& bundlePath, const QString& extractDir);
+    /** Calls the limited privileged updater helper. */
+    bool runUpdaterHelper(const QStringList& args, QString* output = nullptr);
+    /** Returns the mapped systemd service for a component. */
+    QString serviceNameForComponent(const QString& component) const;
+    /** Returns true if a file starts with the ELF magic bytes. */
+    bool isElfExecutable(const QString& filePath) const;
+    /** Returns true if a file contains valid JSON. */
+    bool isValidJsonFile(const QString& filePath, QJsonDocument* document = nullptr);
 
     /** Flashes firmware to the MCU via ProtocolRouter. */
     bool flashMcuFirmware(const QString& firmwarePath);
@@ -154,6 +190,7 @@ private:
     QString m_versionFilePath;
     QString m_systemdUnitDir;
     QString m_serviceInstallDir;
+    QString m_updaterHelperPath;
     int m_updateTimeoutMs;
     int m_mcuChunkSize;
 

@@ -314,6 +314,10 @@ async function ensureSchema() {
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS static_ip TEXT;
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS declared_status TEXT;
     ALTER TABLE devices ADD COLUMN IF NOT EXISTS protocol TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE devices ADD COLUMN IF NOT EXISTS requested_state TEXT;
+    ALTER TABLE devices ADD COLUMN IF NOT EXISTS command_status TEXT DEFAULT 'idle';
+    ALTER TABLE devices ADD COLUMN IF NOT EXISTS command_requested_at TIMESTAMPTZ;
+    ALTER TABLE devices ADD COLUMN IF NOT EXISTS state_confirmed_at TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS idx_events_room_created_at ON events (room_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at DESC);
   `);
@@ -502,12 +506,48 @@ async function updateDeviceState(roomId, deviceId, state) {
   const result = await pool.query(
     `UPDATE devices
      SET state = $3,
+         command_status = CASE
+           WHEN requested_state IS NOT NULL AND $3 = requested_state THEN 'confirmed'
+           ELSE command_status
+         END,
+         requested_state = CASE
+           WHEN requested_state IS NOT NULL AND $3 = requested_state THEN NULL
+           ELSE requested_state
+         END,
+         state_confirmed_at = CASE
+           WHEN requested_state IS NOT NULL AND $3 = requested_state THEN NOW()
+           ELSE state_confirmed_at
+         END,
          updated_at = NOW()
      WHERE room_id = $1 AND id = $2
      RETURNING id, room_id, name, type, protocol, state, metadata`,
     [roomId, deviceId, state]
   );
   return result.rows[0] || null;
+}
+
+async function markDeviceCommandRequested(roomId, deviceId, requestedState) {
+  await pool.query(
+    `UPDATE devices
+     SET requested_state = $3,
+         command_status = 'requested',
+         command_requested_at = NOW(),
+         updated_at = NOW()
+     WHERE room_id = $1 AND id = $2`,
+    [roomId, deviceId, requestedState]
+  );
+}
+
+async function markDeviceCommandPublishFailed(roomId, deviceId, requestedState) {
+  await pool.query(
+    `UPDATE devices
+     SET requested_state = $3,
+         command_status = 'publish_failed',
+         command_requested_at = NOW(),
+         updated_at = NOW()
+     WHERE room_id = $1 AND id = $2`,
+    [roomId, deviceId, requestedState]
+  );
 }
 
 async function updateDeviceStateFromPayload(event) {
@@ -582,4 +622,6 @@ module.exports = {
   getRoomConfig,
   updateDeviceState,
   recordEvent,
+  markDeviceCommandRequested,
+  markDeviceCommandPublishFailed,
 };

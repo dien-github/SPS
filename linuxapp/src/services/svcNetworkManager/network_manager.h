@@ -77,8 +77,8 @@ signals:
     void DeviceStatusUpdated(const QString& deviceId, const QString& status);
     /** Emitted when a command is received via MQTT (projector, relay, ac, sync, ota, etc). */
     void CommandReceived(const QString& command, const QByteArray& payload);
-    /** Emitted when an OTA update command is received. */
-    void OtaCommandReceived(const QString& firmwareUrl);
+    /** Emitted when an OTA/update command is received. */
+    void OtaCommandReceived(const QByteArray& updateJson);
 
 public slots:
     /** D-Bus: Returns the current MQTT connection status string. */
@@ -145,7 +145,7 @@ private:
     void handleAcCommand(const QString& roomId, const QString& deviceKey, const QJsonObject& data);
     /** Handles a sync command and emits the received lecturer data. */
     void handleSyncCommand(const QString& roomId, const QJsonObject& syncData);
-    /** Handles an OTA command and emits the firmware URL. */
+    /** Handles an OTA command and emits the full update metadata JSON. */
     void handleOtaCommand(const QString& roomId, const QJsonObject& otaData);
 
     // Configuration

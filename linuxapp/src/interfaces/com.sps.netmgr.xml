@@ -112,5 +112,10 @@
       <arg type="s" name="downloadUrl"/>
       <!-- Emitted when OTA update is available -->
     </signal>
+
+    <signal name="OtaCommandReceived">
+      <arg type="ay" name="updateJson"/>
+      <!-- Emitted when an OTA/update command is received with full metadata JSON -->
+    </signal>
   </interface>
 </node>

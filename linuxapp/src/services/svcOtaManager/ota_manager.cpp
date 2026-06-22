@@ -13,6 +13,9 @@
 #include <QDBusReply>
 #include <QDBusError>
 #include <QCoreApplication>
+#include <QFileInfo>
+#include <QRegularExpression>
+#include <QUrl>
 
 // Service binary names mapped to their install paths
 static const QMap<QString, QString> s_serviceMap = {
@@ -24,6 +27,15 @@ static const QMap<QString, QString> s_serviceMap = {
     {"appHmi",             "/opt/sps/bin/appHmi"}
 };
 
+static const QMap<QString, QString> s_serviceUnitMap = {
+    {"svcAuthentication",  "sps-authentication.service"},
+    {"svcProtocolRouter",  "sps-protocol-router.service"},
+    {"svcAutoEngine",      "sps-auto-engine.service"},
+    {"svcNetworkManager",  "sps-network-manager.service"},
+    {"svcOtaManager",      "sps-ota-manager.service"},
+    {"appHmi",             "sps-app-hmi.service"}
+};
+
 /** Constructor. Initializes member variables, connects timers, and logs creation. */
 OtaManager::OtaManager(QObject* parent)
     : SpsServiceBase("com.sps.otamanager", "/com/sps/otamanager", parent),
@@ -32,6 +44,7 @@ OtaManager::OtaManager(QObject* parent)
       m_versionFilePath("/opt/sps/config/version.json"),
       m_systemdUnitDir("/etc/systemd/system"),
       m_serviceInstallDir("/opt/sps/bin"),
+      m_updaterHelperPath("/opt/sps/libexec/sps-updater"),
       m_updateTimeoutMs(300000),
       m_mcuChunkSize(128),
       m_networkManager(nullptr),
@@ -59,6 +72,10 @@ bool OtaManager::initialize() {
     logInfo("Initializing OTA Manager service...");
 
     m_networkManager = new QNetworkAccessManager(this);
+    const QByteArray helperEnv = qgetenv("SPS_UPDATER_HELPER");
+    if (!helperEnv.isEmpty()) {
+        m_updaterHelperPath = QString::fromUtf8(helperEnv);
+    }
 
     // Ensure download directory exists
     QDir().mkpath(m_downloadDir);
@@ -76,9 +93,12 @@ bool OtaManager::initialize() {
                 m_downloadDir = config["download_dir"].toString();
             if (config.contains("update_timeout_ms"))
                 m_updateTimeoutMs = config["update_timeout_ms"].toInt(300000);
+            if (config.contains("updater_helper"))
+                m_updaterHelperPath = config["updater_helper"].toString();
         }
     }
 
+    QDir().mkpath(m_downloadDir);
     logInfo(QString("Download directory: %1").arg(m_downloadDir));
 
     // Check current version
@@ -172,11 +192,86 @@ bool OtaManager::StartMcuFirmwareUpdate(const QString& firmwareUrl, const QStrin
     m_state = OtaUpdateState();
     m_state.mcuFirmwareUrl = firmwareUrl;
     m_state.mcuChecksum = expectedChecksum;
+    m_state.packageType = "mcu_firmware";
+    m_state.target = "mcu";
+    m_state.component = "mcu";
     m_state.stage = OtaStage::DOWNLOADING_MCU;
     m_state.progress = 0;
 
-    emit UpdateStatusChanged(stageToString(m_state.stage));
+    emitUpdateStatus("validating", 0);
 
+    startNextStage();
+    return true;
+}
+
+/** Starts a generic update from dashboard JSON metadata. */
+bool OtaManager::StartUpdate(const QString& updateJson) {
+    if (m_state.stage != OtaStage::IDLE) {
+        logWarning("Update already in progress");
+        return false;
+    }
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(updateJson.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        logError(QString("Invalid update metadata JSON: %1").arg(parseError.errorString()));
+        return false;
+    }
+
+    const QJsonObject obj = doc.object();
+    const QString packageType = obj["package_type"].toString("mcu_firmware").trimmed();
+    const QString target = obj["target"].toString(packageType == "mcu_firmware" ? "mcu" : "sbc").trimmed();
+    const QString url = obj["url"].toString().trimmed();
+    const QString checksum = obj["checksum"].toString().trimmed();
+    const QString component = obj["component"].toString().trimmed();
+
+    if (url.isEmpty()) {
+        logError("Update URL is required");
+        return false;
+    }
+
+    if (packageType == "mcu_firmware") {
+        if (target != "mcu") {
+            logError("mcu_firmware package must target mcu");
+            return false;
+        }
+        return StartMcuFirmwareUpdate(url, checksum);
+    }
+
+    if (target != "sbc") {
+        logError(QString("%1 package must target sbc").arg(packageType));
+        return false;
+    }
+
+    if (packageType == "linuxapp_binary" && (component.isEmpty() || !s_serviceMap.contains(component))) {
+        logError(QString("Unknown LinuxApp component: %1").arg(component));
+        return false;
+    }
+
+    if (packageType != "linuxapp_binary" &&
+        packageType != "config_update" &&
+        packageType != "release_bundle") {
+        logError(QString("Unsupported package_type: %1").arg(packageType));
+        return false;
+    }
+
+    logInfo(QString("Starting update type=%1 target=%2 component=%3 url=%4")
+        .arg(packageType, target, component, url));
+    m_totalUpdates++;
+
+    m_state = OtaUpdateState();
+    m_state.packageType = packageType;
+    m_state.target = target;
+    m_state.component = component;
+    m_state.version = obj["version"].toString().trimmed();
+    m_state.architecture = obj["architecture"].toString().trimmed();
+    m_state.appPackageUrl = url;
+    m_state.appChecksum = checksum;
+    m_state.stage = OtaStage::DOWNLOADING_APPS;
+    m_state.progress = 0;
+    m_currentServiceName = component;
+
+    emitUpdateStatus("validating", 0);
     startNextStage();
     return true;
 }
@@ -197,13 +292,16 @@ bool OtaManager::StartAppServiceUpdate(const QString& serviceName, const QString
     m_totalUpdates++;
 
     m_state = OtaUpdateState();
+    m_state.packageType = "linuxapp_binary";
+    m_state.target = "sbc";
+    m_state.component = serviceName;
     m_state.appPackageUrl = packageUrl;
     m_state.appChecksum = expectedChecksum;
     m_state.stage = OtaStage::DOWNLOADING_APPS;
     m_state.progress = 0;
     m_currentServiceName = serviceName;
 
-    emit UpdateStatusChanged(stageToString(m_state.stage));
+    emitUpdateStatus("validating", 0);
 
     startNextStage();
     return true;
@@ -221,6 +319,8 @@ bool OtaManager::StartFullUpdate(const QString& mcuFirmwareUrl, const QString& m
     m_totalUpdates++;
 
     m_state = OtaUpdateState();
+    m_state.packageType = "mcu_firmware";
+    m_state.target = "mcu";
     m_state.mcuFirmwareUrl = mcuFirmwareUrl;
     m_state.mcuChecksum = mcuChecksum;
     m_state.appPackageUrl = appPackageUrl;
@@ -228,7 +328,7 @@ bool OtaManager::StartFullUpdate(const QString& mcuFirmwareUrl, const QString& m
     m_state.stage = OtaStage::DOWNLOADING_MCU;
     m_state.progress = 0;
 
-    emit UpdateStatusChanged(stageToString(m_state.stage));
+    emitUpdateStatus("validating", 0);
 
     startNextStage();
     return true;
@@ -272,12 +372,12 @@ bool OtaManager::CancelUpdate() {
     return true;
 }
 
-/** Handles an OTA command signal from NetworkManager, starting MCU update if idle. */
-void OtaManager::onOtaCommandReceived(const QString& firmwareUrl) {
-    logInfo(QString("OTA command received from NetworkManager: %1").arg(firmwareUrl));
+/** Handles an OTA/update command signal from NetworkManager. */
+void OtaManager::onOtaCommandReceived(const QByteArray& updateJson) {
+    logInfo(QString("Update command received from NetworkManager: %1 bytes").arg(updateJson.size()));
 
     if (m_state.stage == OtaStage::IDLE) {
-        StartMcuFirmwareUpdate(firmwareUrl, QString());
+        StartUpdate(QString::fromUtf8(updateJson));
     }
 }
 
@@ -294,7 +394,9 @@ void OtaManager::startNextStage() {
 
     switch (m_state.stage) {
         case OtaStage::DOWNLOADING_MCU: {
-            QString destPath = QString("%1/mcu_firmware.bin").arg(m_downloadDir);
+            QString destPath = stagedDownloadPath(m_state.mcuFirmwareUrl, "mcu_firmware.bin");
+            m_state.downloadPath = destPath;
+            emitUpdateStatus("uploaded", 0);
             if (downloadFile(m_state.mcuFirmwareUrl, destPath)) {
                 m_state.progress = 0;
             } else {
@@ -304,7 +406,10 @@ void OtaManager::startNextStage() {
         }
 
         case OtaStage::FLASHING_MCU: {
-            QString firmwarePath = QString("%1/mcu_firmware.bin").arg(m_downloadDir);
+            QString firmwarePath = m_state.downloadPath.isEmpty()
+                ? QString("%1/mcu_firmware.bin").arg(m_downloadDir)
+                : m_state.downloadPath;
+            emitUpdateStatus("installing", 40);
             if (flashMcuFirmware(firmwarePath)) {
                 m_state.stage = OtaStage::VERIFYING;
                 m_state.progress = 90;
@@ -317,7 +422,12 @@ void OtaManager::startNextStage() {
         }
 
         case OtaStage::DOWNLOADING_APPS: {
-            QString destPath = QString("%1/app_update.tar.gz").arg(m_downloadDir);
+            QString fallbackName = m_state.packageType == "linuxapp_binary"
+                ? m_state.component
+                : QString("%1.tar.gz").arg(m_state.packageType.isEmpty() ? "update" : m_state.packageType);
+            QString destPath = stagedDownloadPath(m_state.appPackageUrl, fallbackName);
+            m_state.downloadPath = destPath;
+            emitUpdateStatus("uploaded", 50);
             if (downloadFile(m_state.appPackageUrl, destPath)) {
                 m_state.progress = 50;
             } else {
@@ -327,8 +437,11 @@ void OtaManager::startNextStage() {
         }
 
         case OtaStage::UPDATING_APPS: {
-            QString packagePath = QString("%1/app_update.tar.gz").arg(m_downloadDir);
-            if (updateAppService(m_currentServiceName, packagePath)) {
+            QString packagePath = m_state.downloadPath.isEmpty()
+                ? QString("%1/app_update.tar.gz").arg(m_downloadDir)
+                : m_state.downloadPath;
+            emitUpdateStatus("installing", 80);
+            if (installDownloadedUpdate(packagePath)) {
                 m_state.stage = OtaStage::VERIFYING;
                 m_state.progress = 90;
                 emit UpdateProgress(m_state.progress, stageToString(m_state.stage));
@@ -346,8 +459,7 @@ void OtaManager::startNextStage() {
             m_successfulUpdates++;
 
             logInfo("Update completed successfully");
-            emit UpdateStatusChanged(stageToString(m_state.stage));
-            emit UpdateProgress(100, "COMPLETED");
+            emitUpdateStatus("success", 100);
             emit UpdateCompleted(true, "Update completed successfully");
 
             m_state.stage = OtaStage::IDLE;
@@ -442,6 +554,7 @@ void OtaManager::onDownloadFinished() {
         }
     }
 
+    m_state.downloadPath = m_downloadFile->fileName();
     logInfo(QString("Download completed: %1").arg(m_downloadFile->fileName()));
 
     // Verify checksum if provided
@@ -461,6 +574,12 @@ void OtaManager::onDownloadFinished() {
             return;
         }
         logInfo("App package checksum verified");
+    }
+
+    emitUpdateStatus("validating", m_state.stage == OtaStage::DOWNLOADING_MCU ? 40 : 75);
+    if (!validateDownloadedUpdate(m_downloadFile->fileName())) {
+        setError("Downloaded update validation failed");
+        return;
     }
 
     // Move to next stage
@@ -511,6 +630,406 @@ bool OtaManager::verifyChecksum(const QString& filePath, const QString& expected
 /** Returns the configured download directory path. */
 QString OtaManager::getDefaultDownloadPath() const {
     return m_downloadDir;
+}
+
+/** Emits a user-facing update status and optional progress. */
+void OtaManager::emitUpdateStatus(const QString& status, int progress) {
+    logInfo(QString("Update status: %1").arg(status));
+    emit UpdateStatusChanged(status);
+    if (progress >= 0) {
+        m_state.progress = progress;
+        emit UpdateProgress(progress, status);
+    }
+}
+
+/** Builds a safe staged download path for an update URL or fallback name. */
+QString OtaManager::stagedDownloadPath(const QString& url, const QString& fallbackName) const {
+    QString fileName = QUrl(url).fileName();
+    if (fileName.isEmpty()) {
+        fileName = fallbackName;
+    }
+
+    fileName.replace(QRegularExpression("[^A-Za-z0-9._-]"), "-");
+    if (fileName.isEmpty()) {
+        fileName = "update.bin";
+    }
+
+    return QDir(m_downloadDir).filePath(QString("%1-%2")
+        .arg(QDateTime::currentDateTime().toString("yyyyMMddHHmmss"), fileName));
+}
+
+/** Returns the artifact extension, preserving .tar.gz as a compound extension. */
+QString OtaManager::artifactExtension(const QString& filePath) const {
+    const QString lower = QFileInfo(filePath).fileName().toLower();
+    if (lower.endsWith(".tar.gz")) return ".tar.gz";
+    if (lower.endsWith(".tgz")) return ".tgz";
+    return QFileInfo(lower).suffix().isEmpty()
+        ? QString()
+        : QString(".%1").arg(QFileInfo(lower).suffix());
+}
+
+/** Returns true if a file starts with the ELF magic bytes. */
+bool OtaManager::isElfExecutable(const QString& filePath) const {
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    const QByteArray magic = file.read(4);
+    return magic.size() == 4 &&
+           static_cast<unsigned char>(magic[0]) == 0x7f &&
+           magic[1] == 'E' &&
+           magic[2] == 'L' &&
+           magic[3] == 'F';
+}
+
+/** Returns true if a file contains valid JSON. */
+bool OtaManager::isValidJsonFile(const QString& filePath, QJsonDocument* document) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        logError(QString("Cannot open JSON file: %1").arg(filePath));
+        return false;
+    }
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || doc.isNull()) {
+        logError(QString("Invalid JSON file %1: %2").arg(filePath, parseError.errorString()));
+        return false;
+    }
+
+    if (document) {
+        *document = doc;
+    }
+    return true;
+}
+
+/** Reads manifest.json and optionally lists entries from a tar/tar.gz bundle. */
+bool OtaManager::readBundleManifest(const QString& bundlePath, QJsonObject* manifest, QStringList* entries) {
+    const QString extension = artifactExtension(bundlePath);
+    if (extension != ".tar" && extension != ".tar.gz" && extension != ".tgz") {
+        logError(QString("Unsupported package archive: %1").arg(bundlePath));
+        return false;
+    }
+
+    const bool compressed = extension == ".tar.gz" || extension == ".tgz";
+    QProcess listProcess;
+    listProcess.start("tar", QStringList() << (compressed ? "-tzf" : "-tf") << bundlePath);
+    if (!listProcess.waitForFinished(30000) || listProcess.exitCode() != 0) {
+        logError(QString("Failed to list package archive: %1")
+            .arg(QString::fromUtf8(listProcess.readAllStandardError())));
+        return false;
+    }
+
+    const QStringList archiveEntries = QString::fromUtf8(listProcess.readAllStandardOutput())
+        .split('\n', Qt::SkipEmptyParts);
+    for (const QString& entry : archiveEntries) {
+        if (entry.startsWith("/") || entry.split('/').contains("..")) {
+            logError(QString("Package archive contains unsafe path: %1").arg(entry));
+            return false;
+        }
+    }
+
+    if (entries) {
+        *entries = archiveEntries;
+    }
+
+    QString manifestName;
+    for (const QString& entry : archiveEntries) {
+        if (entry == "manifest.json" || entry.endsWith("/manifest.json")) {
+            manifestName = entry;
+            break;
+        }
+    }
+
+    if (manifestName.isEmpty()) {
+        logError("Package archive missing manifest.json");
+        return false;
+    }
+
+    QProcess manifestProcess;
+    manifestProcess.start("tar", QStringList() << (compressed ? "-xOzf" : "-xOf") << bundlePath << manifestName);
+    if (!manifestProcess.waitForFinished(30000) || manifestProcess.exitCode() != 0) {
+        logError(QString("Failed to read manifest.json: %1")
+            .arg(QString::fromUtf8(manifestProcess.readAllStandardError())));
+        return false;
+    }
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(manifestProcess.readAllStandardOutput(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        logError(QString("Invalid manifest.json: %1").arg(parseError.errorString()));
+        return false;
+    }
+
+    if (manifest) {
+        *manifest = doc.object();
+    }
+    return true;
+}
+
+/** Extracts a tar/tar.gz bundle into a staging directory. */
+bool OtaManager::extractBundle(const QString& bundlePath, const QString& extractDir) {
+    QDir().mkpath(extractDir);
+    const QString extension = artifactExtension(bundlePath);
+    const bool compressed = extension == ".tar.gz" || extension == ".tgz";
+
+    QProcess tar;
+    tar.start("tar", QStringList() << (compressed ? "-xzf" : "-xf") << bundlePath << "-C" << extractDir);
+    if (!tar.waitForFinished(60000) || tar.exitCode() != 0) {
+        logError(QString("Failed to extract bundle: %1").arg(QString::fromUtf8(tar.readAllStandardError())));
+        return false;
+    }
+    return true;
+}
+
+/** Validates the downloaded artifact for the active package type. */
+bool OtaManager::validateDownloadedUpdate(const QString& filePath) {
+    const QString extension = artifactExtension(filePath);
+
+    if (m_state.packageType == "mcu_firmware") {
+        if (extension != ".bin") {
+            logError("MCU firmware must be a .bin file");
+            return false;
+        }
+        return true;
+    }
+
+    if (m_state.packageType == "linuxapp_binary") {
+        if (!extension.isEmpty() && extension != ".elf") {
+            logError("LinuxApp binary must be .elf or a no-extension ELF executable");
+            return false;
+        }
+        if (!isElfExecutable(filePath)) {
+            logError("LinuxApp binary is not an ELF executable");
+            return false;
+        }
+        return true;
+    }
+
+    if (m_state.packageType == "config_update") {
+        if (extension == ".json") {
+            return isValidJsonFile(filePath);
+        }
+        QJsonObject manifest;
+        return readBundleManifest(filePath, &manifest);
+    }
+
+    if (m_state.packageType == "release_bundle") {
+        if (extension != ".tar.gz" && extension != ".tgz") {
+            logError("Release bundle must be .tar.gz or .tgz");
+            return false;
+        }
+
+        QJsonObject manifest;
+        QStringList entries;
+        if (!readBundleManifest(filePath, &manifest, &entries)) {
+            return false;
+        }
+
+        const QStringList requiredRoots = {"bin/", "config/", "systemd/"};
+        for (const QString& root : requiredRoots) {
+            bool found = false;
+            for (const QString& entry : entries) {
+                if (entry.startsWith(root) || entry.contains(QString("/%1").arg(root))) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                logError(QString("Release bundle missing %1").arg(root));
+                return false;
+            }
+        }
+        return true;
+    }
+
+    logError(QString("Unsupported package type: %1").arg(m_state.packageType));
+    return false;
+}
+
+/** Calls the limited privileged updater helper. */
+bool OtaManager::runUpdaterHelper(const QStringList& args, QString* output) {
+    if (!QFileInfo::exists(m_updaterHelperPath)) {
+        logError(QString("Updater helper not found: %1").arg(m_updaterHelperPath));
+        return false;
+    }
+
+    QString program = "sudo";
+    QStringList processArgs;
+    processArgs << "-n" << m_updaterHelperPath;
+    processArgs.append(args);
+
+    if (qEnvironmentVariable("SPS_UPDATER_DIRECT") == "1") {
+        program = m_updaterHelperPath;
+        processArgs = args;
+    }
+
+    QProcess process;
+    process.start(program, processArgs);
+    if (!process.waitForFinished(120000)) {
+        process.kill();
+        logError("Updater helper timed out");
+        return false;
+    }
+
+    const QString combinedOutput = QString::fromUtf8(process.readAllStandardOutput())
+        + QString::fromUtf8(process.readAllStandardError());
+    if (output) {
+        *output = combinedOutput.trimmed();
+    }
+    if (!combinedOutput.trimmed().isEmpty()) {
+        logInfo(QString("Updater helper output: %1").arg(combinedOutput.trimmed()));
+    }
+    if (combinedOutput.contains("rollback_done")) {
+        emitUpdateStatus("rollback_done", m_state.progress);
+    }
+
+    return process.exitCode() == 0;
+}
+
+/** Returns the mapped systemd unit for a component. */
+QString OtaManager::serviceNameForComponent(const QString& component) const {
+    return s_serviceUnitMap.value(component);
+}
+
+/** Installs a LinuxApp binary through the privileged updater helper. */
+bool OtaManager::installLinuxAppBinary(const QString& component, const QString& filePath) {
+    if (!s_serviceMap.contains(component)) {
+        logError(QString("Unknown LinuxApp component: %1").arg(component));
+        return false;
+    }
+
+    emitUpdateStatus("installing", 82);
+    QString output;
+    const bool ok = runUpdaterHelper(
+        QStringList() << "install-binary" << component << filePath << serviceNameForComponent(component),
+        &output);
+    if (ok) {
+        emitUpdateStatus("restarting", 88);
+    }
+    return ok;
+}
+
+/** Installs a config update through the privileged updater helper. */
+bool OtaManager::installConfigUpdate(const QString& component, const QString& filePath) {
+    const QString extension = artifactExtension(filePath);
+    if (extension == ".json") {
+        const QString configComponent = component.isEmpty() ? QFileInfo(filePath).completeBaseName() : component;
+        emitUpdateStatus("installing", 82);
+        return runUpdaterHelper(
+            QStringList() << "install-config" << configComponent << filePath << serviceNameForComponent(configComponent));
+    }
+
+    QJsonObject manifest;
+    if (!readBundleManifest(filePath, &manifest)) {
+        return false;
+    }
+
+    const QString extractDir = QDir(m_downloadDir).filePath(QString("config-%1")
+        .arg(QDateTime::currentDateTime().toString("yyyyMMddHHmmss")));
+    if (!extractBundle(filePath, extractDir)) {
+        return false;
+    }
+
+    bool ok = true;
+    QJsonArray configs = manifest["configs"].toArray();
+    if (configs.isEmpty()) {
+        QDirIterator it(QDir(extractDir).filePath("config"), QStringList() << "*.json",
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString configPath = it.next();
+            const QString configComponent = QFileInfo(configPath).completeBaseName();
+            ok = runUpdaterHelper(QStringList() << "install-config" << configComponent << configPath
+                                  << serviceNameForComponent(configComponent)) && ok;
+        }
+    } else {
+        for (const QJsonValue& value : configs) {
+            const QJsonObject item = value.toObject();
+            const QString configComponent = item["component"].toString(component);
+            const QString relativePath = item["path"].toString(QString("config/%1.json").arg(configComponent));
+            const QString service = item["service"].toString(serviceNameForComponent(configComponent));
+            ok = runUpdaterHelper(QStringList() << "install-config" << configComponent
+                                  << QDir(extractDir).filePath(relativePath) << service) && ok;
+        }
+    }
+
+    QDir(extractDir).removeRecursively();
+    return ok;
+}
+
+/** Installs a release bundle through the privileged updater helper. */
+bool OtaManager::installReleaseBundle(const QString& bundlePath) {
+    QJsonObject manifest;
+    if (!readBundleManifest(bundlePath, &manifest)) {
+        return false;
+    }
+
+    const QString extractDir = QDir(m_downloadDir).filePath(QString("release-%1")
+        .arg(QDateTime::currentDateTime().toString("yyyyMMddHHmmss")));
+    if (!extractBundle(bundlePath, extractDir)) {
+        return false;
+    }
+
+    bool ok = true;
+    const QJsonArray components = manifest["components"].toArray();
+    if (components.isEmpty()) {
+        QDirIterator it(QDir(extractDir).filePath("bin"), QDir::Files);
+        while (it.hasNext()) {
+            const QString binaryPath = it.next();
+            const QString component = QFileInfo(binaryPath).fileName();
+            ok = installLinuxAppBinary(component, binaryPath) && ok;
+        }
+    } else {
+        for (const QJsonValue& value : components) {
+            const QJsonObject item = value.toObject();
+            const QString type = item["type"].toString("linuxapp_binary");
+            const QString component = item["component"].toString();
+            const QString relativePath = item["path"].toString(QString("bin/%1").arg(component));
+            if (type == "linuxapp_binary") {
+                ok = installLinuxAppBinary(component, QDir(extractDir).filePath(relativePath)) && ok;
+            } else if (type == "config_update") {
+                ok = installConfigUpdate(component, QDir(extractDir).filePath(relativePath)) && ok;
+            }
+        }
+    }
+
+    const QJsonArray configs = manifest["configs"].toArray();
+    for (const QJsonValue& value : configs) {
+        const QJsonObject item = value.toObject();
+        const QString component = item["component"].toString();
+        const QString relativePath = item["path"].toString(QString("config/%1.json").arg(component));
+        ok = installConfigUpdate(component, QDir(extractDir).filePath(relativePath)) && ok;
+    }
+
+    emitUpdateStatus("restarting", 88);
+    const QJsonArray services = manifest["services"].toArray();
+    for (const QJsonValue& value : services) {
+        const QString service = value.isObject()
+            ? value.toObject()["name"].toString()
+            : value.toString();
+        if (!service.isEmpty()) {
+            ok = runUpdaterHelper(QStringList() << "restart-service" << service) && ok;
+        }
+    }
+
+    QDir(extractDir).removeRecursively();
+    return ok;
+}
+
+/** Installs the downloaded artifact using the active package type dispatcher. */
+bool OtaManager::installDownloadedUpdate(const QString& filePath) {
+    if (m_state.packageType == "linuxapp_binary") {
+        return installLinuxAppBinary(m_state.component, filePath);
+    }
+    if (m_state.packageType == "config_update") {
+        return installConfigUpdate(m_state.component, filePath);
+    }
+    if (m_state.packageType == "release_bundle") {
+        return installReleaseBundle(filePath);
+    }
+
+    logError(QString("No SBC installer for package type: %1").arg(m_state.packageType));
+    return false;
 }
 
 /** Flashes firmware binary to the MCU via ProtocolRouter D-Bus interface. */
@@ -873,7 +1392,7 @@ bool OtaManager::connectToNetworkManager() {
         SPS::DBus::PATH_NETMGR,
         SPS::DBus::IFACE_NETMGR,
         "OtaCommandReceived",
-        this, SLOT(onOtaCommandReceived(const QString&)));
+        this, SLOT(onOtaCommandReceived(const QByteArray&)));
 
     if (!ok) {
         logWarning("Failed to connect to NetworkManager OtaCommandReceived signal");
@@ -935,7 +1454,7 @@ void OtaManager::setError(const QString& message) {
     m_updateTimer.stop();
 
     logError(message);
-    emit UpdateStatusChanged(stageToString(m_state.stage));
+    emitUpdateStatus("failed", m_state.progress);
     emit UpdateCompleted(false, message);
 
     // Clean up

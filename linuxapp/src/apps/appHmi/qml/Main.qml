@@ -22,10 +22,23 @@ ApplicationWindow {
     property string szPcMacAddress: dbusClient.pcMacAddress
     property var scenarioIds: []
     property string szFooterStatus: "Ready"
+    property bool bManualLoginPending: false
+    property string szManualLoginStatus: ""
 
     property string warningAlertType: ""
     property string warningMessage: ""
     readonly property string szAppVersion: "v0.1.0"
+    property bool bCompactDashboard: appWindow.width <= 1100 || appWindow.height <= 650
+    property int iDashboardMargin: bCompactDashboard ? 8 : (appWindow.width < 760 ? 12 : 18)
+    property int iDashboardSpacing: bCompactDashboard ? 6 : (appWindow.width < 760 ? 10 : 14)
+    property int iHeaderHeight: bCompactDashboard ? 56 : 72
+    property int iFooterHeight: bCompactDashboard ? 38 : 48
+    property int iScenarioButtonHeight: bCompactDashboard ? 34 : 58
+    property int iScenarioPanelBaseHeight: bCompactDashboard ? 38 : 64
+    property int iScenarioPanelRowHeight: bCompactDashboard ? 40 : 66
+    property int iDeviceCardButtonHeight: bCompactDashboard ? 34 : 48
+    property int iDeviceCardBaseHeight: bCompactDashboard ? 56 : 88
+    property int iDeviceCardRowHeight: bCompactDashboard ? 40 : 56
     readonly property url compCoreWordmarkLogo: Qt.resolvedUrl("assets/compcore-wordmark-light.png")
     readonly property url compCoreEmblemLogo: Qt.resolvedUrl("assets/compcore-emblem.png")
 
@@ -39,17 +52,17 @@ ApplicationWindow {
     }
 
     function scenarioColumnCount() {
-        if (dashboard.width < 760)
+        if (dashboard.width < 620)
             return 1
-        if (dashboard.width < 1120)
+        if (dashboard.width < 900)
             return 2
         return 3
     }
 
     function deviceColumnCount() {
-        if (dashboard.width < 760)
+        if (dashboard.width < 620)
             return 1
-        if (dashboard.width < 1120)
+        if (dashboard.width < 900)
             return 2
         return 3
     }
@@ -60,21 +73,43 @@ ApplicationWindow {
         dbusClient.setRoomActive()
     }
 
+    function requestManualLogin() {
+        if (bManualLoginPending)
+            return
+
+        bManualLoginPending = true
+        szManualLoginStatus = "Logging in..."
+
+        if (!dbusClient.unlockScreen("")) {
+            bManualLoginPending = false
+            szManualLoginStatus = "Manual login failed"
+        }
+    }
+
     Connections {
         target: dbusClient
         function onAuthStatusChanged(status) {
             console.log("[QML]: Auth status changed: " + status)
             szAuthStatus = status
             if (status === "UNLOCKED") {
+                bManualLoginPending = false
+                szManualLoginStatus = ""
                 var lecturer = dbusClient.getAuthenticatedLecturer()
                 if (lecturer.length > 0) {
                     szTeacherName = lecturer
                 }
                 bIsLocked = false
+            } else if (bManualLoginPending && status === "ERROR") {
+                bManualLoginPending = false
+                szManualLoginStatus = "Manual login failed"
+            } else if (status === "LOCKED") {
+                bManualLoginPending = false
             }
         }
         function onLecturerAuthenticated(lecturerName, timestamp) {
             console.log("[QML]: Lecturer authenticated: " + lecturerName)
+            bManualLoginPending = false
+            szManualLoginStatus = ""
             szTeacherName = lecturerName
             bIsLocked = false
         }
@@ -156,8 +191,8 @@ ApplicationWindow {
         property string tone: "primary"
 
         Layout.fillWidth: true
-        Layout.preferredHeight: 48
-        font.pixelSize: 15
+        Layout.preferredHeight: appWindow.iDeviceCardButtonHeight
+        font.pixelSize: appWindow.bCompactDashboard ? 13 : 15
         font.bold: true
 
         background: Rectangle {
@@ -192,12 +227,12 @@ ApplicationWindow {
     component ScenarioButton: Button {
         id: scenarioButton
         Layout.fillWidth: true
-        Layout.preferredHeight: 58
-        font.pixelSize: 16
+        Layout.preferredHeight: appWindow.iScenarioButtonHeight
+        font.pixelSize: appWindow.bCompactDashboard ? 14 : 16
         font.bold: true
 
         background: Rectangle {
-            radius: 8
+            radius: appWindow.bCompactDashboard ? 6 : 8
             color: scenarioButton.down ? "#0f766e" : "#ffffff"
             border.color: "#0f9f8f"
             border.width: 1
@@ -220,7 +255,9 @@ ApplicationWindow {
         default property alias actionItems: actionRow.data
 
         Layout.fillWidth: true
-        Layout.preferredHeight: 88 + Math.ceil(actionRow.children.length / actionColumns) * 56
+        Layout.preferredHeight: appWindow.iDeviceCardBaseHeight
+                                + Math.ceil(actionRow.children.length / actionColumns)
+                                * appWindow.iDeviceCardRowHeight
         radius: 8
         color: "#ffffff"
         border.color: "#d8dee8"
@@ -228,17 +265,17 @@ ApplicationWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 14
-            spacing: 10
+            anchors.margins: appWindow.bCompactDashboard ? 10 : 14
+            spacing: appWindow.bCompactDashboard ? 6 : 10
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 2
+                spacing: 1
 
                 Text {
                     text: title
                     color: "#172033"
-                    font.pixelSize: 17
+                    font.pixelSize: appWindow.bCompactDashboard ? 16 : 17
                     font.bold: true
                     elide: Text.ElideRight
                     Layout.fillWidth: true
@@ -247,7 +284,7 @@ ApplicationWindow {
                 Text {
                     text: subtitle
                     color: "#64748b"
-                    font.pixelSize: 12
+                    font.pixelSize: appWindow.bCompactDashboard ? 11 : 12
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
@@ -257,8 +294,8 @@ ApplicationWindow {
                 id: actionRow
                 columns: actionColumns
                 Layout.fillWidth: true
-                columnSpacing: 8
-                rowSpacing: 8
+                columnSpacing: appWindow.bCompactDashboard ? 6 : 8
+                rowSpacing: appWindow.bCompactDashboard ? 6 : 8
             }
         }
     }
@@ -654,6 +691,55 @@ ApplicationWindow {
             scaleFactor: lockScreen.uiScale
         }
 
+        Column {
+            id: manualLoginPanel
+            anchors.left: parent.left
+            anchors.leftMargin: lockScreen.edgeMargin
+            anchors.top: loginRfidCard.bottom
+            anchors.topMargin: Math.round(18 * lockScreen.uiScale)
+            width: Math.min(lockScreen.leftColumnWidth, Math.round(320 * lockScreen.uiScale))
+            spacing: Math.round(8 * lockScreen.uiScale)
+
+            Button {
+                id: manualLoginButton
+                width: parent.width
+                height: Math.max(44, Math.round(54 * lockScreen.uiScale))
+                enabled: !appWindow.bManualLoginPending
+                text: appWindow.bManualLoginPending ? "Logging in..." : "Manual Login"
+                font.pixelSize: Math.round(18 * lockScreen.uiScale)
+                font.bold: true
+                onClicked: appWindow.requestManualLogin()
+
+                background: Rectangle {
+                    radius: Math.round(8 * lockScreen.uiScale)
+                    color: !manualLoginButton.enabled ? "#6f8798"
+                          : manualLoginButton.down ? "#12a8a4"
+                          : "#25f3ec"
+                    border.color: !manualLoginButton.enabled ? "#8aa0ad" : "#d7fffb"
+                    border.width: 1
+                }
+
+                contentItem: Text {
+                    text: manualLoginButton.text
+                    color: manualLoginButton.enabled ? "#061927" : "#dce8ef"
+                    font: manualLoginButton.font
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+            }
+
+            Text {
+                width: parent.width
+                visible: appWindow.szManualLoginStatus.length > 0
+                text: appWindow.szManualLoginStatus
+                color: "#dce8ef"
+                opacity: 0.92
+                font.pixelSize: Math.round(15 * lockScreen.uiScale)
+                elide: Text.ElideRight
+            }
+        }
+
         Row {
             anchors.left: parent.left
             anchors.leftMargin: lockScreen.edgeMargin
@@ -697,13 +783,13 @@ ApplicationWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: dashboard.width < 760 ? 12 : 18
-            spacing: dashboard.width < 760 ? 10 : 14
+            anchors.margins: appWindow.iDashboardMargin
+            spacing: appWindow.iDashboardSpacing
 
             Rectangle {
                 id: header
                 Layout.fillWidth: true
-                Layout.preferredHeight: dashboard.width < 760 ? 78 : 72
+                Layout.preferredHeight: appWindow.iHeaderHeight
                 radius: 8
                 color: "#ffffff"
                 border.color: "#d8dee8"
@@ -711,8 +797,8 @@ ApplicationWindow {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: dashboard.width < 760 ? 10 : 14
-                    spacing: 12
+                    anchors.margins: appWindow.bCompactDashboard ? 10 : 14
+                    spacing: appWindow.bCompactDashboard ? 8 : 12
 
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -721,7 +807,7 @@ ApplicationWindow {
                         Text {
                             text: "SPS Classroom Control"
                             color: "#172033"
-                            font.pixelSize: dashboard.width < 760 ? 20 : 24
+                            font.pixelSize: appWindow.bCompactDashboard ? 21 : (dashboard.width < 760 ? 20 : 24)
                             font.bold: true
                             elide: Text.ElideRight
                             Layout.fillWidth: true
@@ -750,9 +836,9 @@ ApplicationWindow {
 
                     Button {
                         text: "Logout"
-                        Layout.preferredWidth: 104
-                        Layout.preferredHeight: 44
-                        font.pixelSize: 15
+                        Layout.preferredWidth: appWindow.bCompactDashboard ? 96 : 104
+                        Layout.preferredHeight: appWindow.bCompactDashboard ? 38 : 44
+                        font.pixelSize: appWindow.bCompactDashboard ? 14 : 15
                         font.bold: true
                         onClicked: {
                             console.log("[QML]: Logout clicked")
@@ -818,16 +904,20 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 clip: true
                 contentWidth: availableWidth
+                ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                 ColumnLayout {
                     width: dashboardScroll.availableWidth
-                    spacing: dashboard.width < 760 ? 12 : 16
+                    spacing: appWindow.bCompactDashboard ? 6 : (dashboard.width < 760 ? 12 : 16)
 
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: scenarioIds.length === 0
-                                                ? 96
-                                                : 64 + Math.ceil(scenarioIds.length / scenarioColumnCount()) * 66
+                                                ? (appWindow.bCompactDashboard ? 72 : 96)
+                                                : appWindow.iScenarioPanelBaseHeight
+                                                + Math.ceil(scenarioIds.length / scenarioColumnCount())
+                                                * appWindow.iScenarioPanelRowHeight                        
                         radius: 8
                         color: "#ffffff"
                         border.color: "#d8dee8"
@@ -835,8 +925,8 @@ ApplicationWindow {
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 14
-                            spacing: 12
+                            anchors.margins: appWindow.bCompactDashboard ? 10 : 14
+                            spacing: appWindow.bCompactDashboard ? 8 : 12
 
                             RowLayout {
                                 Layout.fillWidth: true
@@ -845,7 +935,7 @@ ApplicationWindow {
                                 Text {
                                     text: "Scenarios"
                                     color: "#172033"
-                                    font.pixelSize: 20
+                                    font.pixelSize: appWindow.bCompactDashboard ? 18 : 20
                                     font.bold: true
                                     Layout.fillWidth: true
                                 }
@@ -870,8 +960,8 @@ ApplicationWindow {
                                 id: scenarioGrid
                                 columns: scenarioColumnCount()
                                 Layout.fillWidth: true
-                                columnSpacing: 10
-                                rowSpacing: 10
+                                columnSpacing: appWindow.bCompactDashboard ? 8 : 10
+                                rowSpacing: appWindow.bCompactDashboard ? 8 : 10
                                 visible: scenarioIds.length > 0
 
                                 Repeater {
@@ -892,7 +982,9 @@ ApplicationWindow {
 
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 82 + Math.ceil(6 / deviceColumnCount()) * 144
+                        Layout.preferredHeight: appWindow.bCompactDashboard
+                                                ? 260
+                                                : 82 + Math.ceil(6 / deviceColumnCount()) * 144
                         radius: 8
                         color: "#ffffff"
                         border.color: "#d8dee8"
@@ -900,13 +992,13 @@ ApplicationWindow {
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 14
-                            spacing: 12
+                            anchors.margins: appWindow.bCompactDashboard ? 10 : 14
+                            spacing: appWindow.bCompactDashboard ? 6 : 12
 
                             Text {
                                 text: "Device Control"
                                 color: "#172033"
-                                font.pixelSize: 20
+                                font.pixelSize: appWindow.bCompactDashboard ? 18 : 20
                                 font.bold: true
                                 Layout.fillWidth: true
                             }
@@ -914,8 +1006,8 @@ ApplicationWindow {
                             GridLayout {
                                 columns: deviceColumnCount()
                                 Layout.fillWidth: true
-                                columnSpacing: 12
-                                rowSpacing: 12
+                                columnSpacing: appWindow.bCompactDashboard ? 8 : 12
+                                rowSpacing: appWindow.bCompactDashboard ? 8 : 12
 
                                 DeviceCard {
                                     title: "Desk PC"
@@ -1015,6 +1107,7 @@ ApplicationWindow {
                                 DeviceCard {
                                     title: "Air Conditioner"
                                     subtitle: "ON/OFF and temperature step control"
+                                    actionColumns: 4
 
                                     ControlButton {
                                         text: "ON"
@@ -1048,7 +1141,7 @@ ApplicationWindow {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 48
+                Layout.preferredHeight: appWindow.iFooterHeight
                 radius: 8
                 color: "#ffffff"
                 border.color: "#d8dee8"

@@ -39,7 +39,23 @@ int main(int argc, char *argv[])
             // Make window fullscreen and disable exit
             QWindow* window = qobject_cast<QWindow*>(root);
             if (window) {
-                window->setGeometry(QGuiApplication::primaryScreen()->geometry());
+                const QList<QScreen*> screens = QGuiApplication::screens();
+
+                // Use secondary screen if available, otherwise fallback to primary screen
+                QScreen* targetScreen = nullptr;
+                if (screens.size() > 1) {
+                    targetScreen = screens.at(1);
+                    qInfo() << "Using secondary screen:" << targetScreen->name()
+                            << targetScreen->geometry();
+                } else {
+                    targetScreen = QGuiApplication::primaryScreen();
+                    qWarning() << "Secondary screen not found. Fallback to primary screen:"
+                               << targetScreen->name()
+                               << targetScreen->geometry();
+                }
+
+                window->setScreen(targetScreen);
+                window->setGeometry(targetScreen->geometry());
                 window->showFullScreen();
             }
         },

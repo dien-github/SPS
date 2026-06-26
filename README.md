@@ -492,32 +492,7 @@ python tests/integration/sps_integration_tester.py run --all
 
 Các test này giả lập/kiểm tra các luồng D-Bus, MQTT và UART ở mức tích hợp. Muốn test pass đầy đủ cần các service SPS đang chạy trên D-Bus system bus.
 
-## 9. Hiện trạng quan trọng trong mã nguồn
-
-Những điểm đã có:
-
-- CMake build cho 6 executable chính của `linuxapp/`.
-- D-Bus XML interface cho auth, engine, router, network, OTA.
-- UART frame builder/parser với CRC-16, receive buffer và retry command queue.
-- Qt/QML HMI fullscreen kiosk, có màn hình khóa và dashboard điều khiển cơ bản.
-- OTA manager có flow tải file, checksum, flash MCU qua router và thay binary service.
-- `svcNetworkManager` có MQTT client TCP cơ bản, topic pub/sub, heartbeat/LWT và Wake-on-LAN có thể bật/tắt bằng config.
-- Docker Compose cho PostgreSQL, Mosquitto và Node API/dashboard.
-- Backend có schema PostgreSQL tối thiểu, REST API quản lý lecturer/room/device, MQTT worker và OTA static file server.
-- Web dashboard static được serve trực tiếp từ API ở `/`.
-- Tool `tools/device-simulator.py` để tạo nhiều PCD giả lập qua MQTT.
-- Integration tester CLI mô tả các kịch bản end-to-end.
-
-Những điểm còn là scaffold hoặc cần hoàn thiện:
-
-- `svcAuthentication` đang dùng JSON demo thay vì SQLite WAL.
-- MQTT client phía `linuxapp` đang là implementation tối thiểu trên `QTcpSocket`, cần test thêm với broker thật, reconnect dài hạn, QoS/edge case và bảo mật.
-- Backend chưa có auth/session cho dashboard, phân quyền admin, migration framework, API đọc event lịch sử và realtime dashboard.
-- `appHmi` còn luồng demo login/fake RFID phục vụ WSL; cần kiểm thử lại trên màn hình cảm ứng thật.
-- `firmware/` hiện chủ yếu là header/contract, chưa thấy đầy đủ source `.c` trong repo.
-- Buildroot config hiện có tên `sps_pi_3_64_defconfig`; nếu target cuối là Raspberry Pi 4 cần kiểm tra lại defconfig, kernel DTS và firmware package tương ứng.
-
-## 10. Quy ước làm việc nhóm
+## 9. Quy ước làm việc nhóm
 
 - Tính năng mới nên phát triển trên nhánh riêng, ví dụ `feature/ir_task`.
 - Khi code đã build được và không còn lỗi vặt, tạo merge request vào nhánh `develop`.

@@ -10,7 +10,7 @@ venv/
 **/output/
 logs/
 docs/diagram/
-linuxapp/EMBEDDED_LINUX.md
+linuxapp/*.md
 *.zip
 tools/
 

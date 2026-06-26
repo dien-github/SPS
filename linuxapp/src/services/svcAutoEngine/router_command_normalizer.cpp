@@ -129,7 +129,8 @@ bool normalizeCommandKind(const QString& raw,
     const QString token = key(raw);
     if (token.isEmpty() || token == "0" || token == "control" ||
         token == "power" || token == "state" || token == "set" ||
-        token == "setstate" || token == "switch" || isStateToken(token)) {
+        token == "setstate" || token == "switch" || isStateToken(token) ||
+        SPS::AutoEngine::parseDeviceType(raw) != SPS::Device::Type::UNKNOWN) {
         kind = SPS::AutoEngine::RouterCommandKind::Control;
         return true;
     }

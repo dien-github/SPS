@@ -9,6 +9,10 @@ venv/
 **/.qt/
 **/output/
 logs/
+docs/diagram/
+linuxapp/EMBEDDED_LINUX.md
+*.zip
+tools/
 
 # Python
 __pycache__/

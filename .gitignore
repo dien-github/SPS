@@ -1,4 +1,31 @@
 .agents/
 PROJECT_CONTEXT.md
 .venv/
-docs/
+venv/
+.vscode/
+**/build/
+**/.tutorial/
+**.save
+**/.qt/
+**/output/
+logs/
+docs/diagram/
+linuxapp/EMBEDDED_LINUX.md
+*.zip
+tools/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node
+node_modules/
+
+# Environment
+.env
+*.env
+
+# Large files
+*.img.xz
+server/ota/staging/*

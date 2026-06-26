@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="com.sps.engine">
+    <!-- Auto Scenario Engine Service Interface -->
+    
+    <!-- Methods -->
+    <method name="GetAvailableScenarios">
+      <arg type="as" direction="out" name="scenarios"/>
+      <!-- Returns list of available scenario IDs -->
+    </method>
+    
+    <method name="ExecuteScenario">
+      <arg type="s" direction="in" name="scenarioId"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Execute a predefined scenario -->
+    </method>
+    
+    <method name="GetScenarioStatus">
+      <arg type="s" direction="in" name="scenarioId"/>
+      <arg type="s" direction="out" name="status"/>
+      <!-- Returns: "IDLE", "RUNNING", "PAUSED", "COMPLETED", "ERROR" -->
+    </method>
+    
+    <method name="StopScenario">
+      <arg type="s" direction="in" name="scenarioId"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Stop currently executing scenario -->
+    </method>
+    
+    <method name="GetScenarioInfo">
+      <arg type="s" direction="in" name="scenarioId"/>
+      <arg type="s" direction="out" name="name"/>
+      <arg type="s" direction="out" name="description"/>
+      <arg type="i" direction="out" name="commandCount"/>
+      <!-- Get scenario details -->
+    </method>
+    
+    <method name="ControlDevice">
+      <arg type="y" direction="in" name="deviceId"/>
+      <arg type="s" direction="in" name="action"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Direct device control (bypasses scenario) -->
+    </method>
+    
+    <method name="RegisterContextTrigger">
+      <arg type="s" direction="in" name="context"/>
+      <arg type="s" direction="in" name="scenarioId"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Register scenario to auto-trigger on context event -->
+    </method>
+    
+    <method name="GetEngineStatus">
+      <arg type="s" direction="out" name="status"/>
+      <!-- Returns current engine status -->
+    </method>
+
+    <!-- Signals -->
+    <signal name="ScenarioStarted">
+      <arg type="s" name="scenarioId"/>
+      <!-- Emitted when scenario execution begins -->
+    </signal>
+    
+    <signal name="ScenarioCompleted">
+      <arg type="s" name="scenarioId"/>
+      <!-- Emitted when scenario completes -->
+    </signal>
+    
+    <signal name="ScenarioError">
+      <arg type="s" name="scenarioId"/>
+      <arg type="s" name="errorMessage"/>
+      <!-- Emitted when scenario fails -->
+    </signal>
+    
+    <signal name="CommandExecuting">
+      <arg type="s" name="scenarioId"/>
+      <arg type="i" name="commandIndex"/>
+      <arg type="s" name="commandDescription"/>
+      <!-- Emitted before each command execution -->
+    </signal>
+    
+    <signal name="ContextTriggered">
+      <arg type="s" name="context"/>
+      <arg type="s" name="scenarioId"/>
+      <!-- Emitted when auto-scenario is triggered by context -->
+    </signal>
+  </interface>
+</node>

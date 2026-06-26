@@ -1,0 +1,10 @@
+﻿build/
+*.elf
+*.map
+*.bin
+*.spsfw
+*.o
+*.d
+Debug/
+Release/
+.vscode/

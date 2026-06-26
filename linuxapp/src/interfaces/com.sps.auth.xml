@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="com.sps.auth">
+    <!-- Authentication Service Interface -->
+    
+    <!-- Methods -->
+    <method name="GetAuthStatus">
+      <arg type="i" direction="out" name="status"/>
+      <!-- Returns current auth status: 0=LOCKED, 1=UNLOCKING, 2=UNLOCKED, 3=LOCKING, 4=ERROR -->
+    </method>
+    
+    <method name="UnlockScreen">
+      <arg type="s" direction="in" name="rfidData"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Attempts to unlock screen with RFID data -->
+    </method>
+    
+    <method name="LockScreen">
+      <arg type="b" direction="out" name="success"/>
+      <!-- Locks the screen -->
+    </method>
+    
+    <method name="GetAuthenticatedLecturer">
+      <arg type="s" direction="out" name="lecturerName"/>
+      <!-- Returns name of currently authenticated lecturer -->
+    </method>
+
+    <method name="SetRoomActive">
+      <arg type="b" direction="out" name="success"/>
+      <!-- Marks the room as active for session monitoring (called when a scenario executes or device turns on) -->
+    </method>
+
+    <method name="SyncLecturerList">
+      <arg type="ay" direction="in" name="payload"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Replaces the lecturer database with server-provided JSON array/object payload -->
+    </method>
+
+    <!-- Signals -->
+    <signal name="LecturerListUpdated">
+      <arg type="i" name="lecturerCount"/>
+      <!-- Emitted after a successful lecturer list sync -->
+    </signal>
+
+    <signal name="AuthStatusChanged">
+      <arg type="i" name="newStatus"/>
+      <!-- Emitted when authentication status changes -->
+    </signal>
+    
+    <signal name="LecturerAuthenticated">
+      <arg type="s" name="lecturerName"/>
+      <arg type="x" name="timestamp"/>
+      <!-- Emitted when lecturer successfully authenticates -->
+    </signal>
+    
+    <signal name="AuthenticationFailed">
+      <arg type="s" name="reason"/>
+      <!-- Emitted when authentication fails -->
+    </signal>
+
+    <signal name="RoomMonitorAlert">
+      <arg type="s" name="alertType"/>
+      <arg type="s" name="payloadJson"/>
+      <!-- Emitted when a room monitoring condition triggers (ROOM_USAGE_OVERRUN, OUT_OF_SCHOOL_HOURS) -->
+    </signal>
+  </interface>
+</node>

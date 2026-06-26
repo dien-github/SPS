@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="com.sps.netmgr">
+    <!-- Network Manager Service Interface (MQTT, WoL, Network) -->
+    
+    <!-- Methods -->
+    <method name="GetNetworkStatus">
+      <arg type="s" direction="out" name="status"/>
+      <!-- Returns: "CONNECTED", "DISCONNECTED", "ERROR" -->
+    </method>
+    
+    <method name="GetMqttStatus">
+      <arg type="s" direction="out" name="status"/>
+      <!-- Returns MQTT connection status -->
+    </method>
+    
+    <method name="PublishEvent">
+      <arg type="s" direction="in" name="topic"/>
+      <arg type="ay" direction="in" name="payload"/>
+      <arg type="i" direction="in" name="qos"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Publish MQTT event message -->
+    </method>
+    
+    <method name="GetRoomId">
+      <arg type="s" direction="out" name="roomId"/>
+      <!-- Get configured Room ID -->
+    </method>
+    
+    <method name="SetRoomId">
+      <arg type="s" direction="in" name="roomId"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Set Room ID and reconnect MQTT -->
+    </method>
+    
+    <method name="SendWakeOnLAN">
+      <arg type="s" direction="in" name="macAddress"/>
+      <arg type="s" direction="in" name="broadcastAddr"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Send WoL magic packet to wake up PC -->
+    </method>
+    
+    <method name="SyncLecturerList">
+      <arg type="b" direction="out" name="success"/>
+      <!-- Request lecturer list sync from server -->
+    </method>
+    
+    <method name="GetConnectionDetails">
+      <arg type="s" direction="out" name="ipAddress"/>
+      <arg type="s" direction="out" name="gateway"/>
+      <arg type="s" direction="out" name="dns"/>
+      <!-- Get network configuration details -->
+    </method>
+    
+    <method name="RequestOTAUpdate">
+      <arg type="s" direction="in" name="firmwareVersion"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Request OTA update check from server -->
+    </method>
+
+    <method name="IsPcControlEnabled">
+      <arg type="b" direction="out" name="enabled"/>
+      <!-- Returns whether classroom PC control / Wake-on-LAN is enabled -->
+    </method>
+
+    <method name="GetPcMacAddress">
+      <arg type="s" direction="out" name="macAddress"/>
+      <!-- Returns configured PC MAC address for Wake-on-LAN -->
+    </method>
+
+    <!-- Signals -->
+    <signal name="NetworkConnected">
+      <arg type="s" name="ipAddress"/>
+      <!-- Emitted when network connection established -->
+    </signal>
+    
+    <signal name="NetworkDisconnected">
+      <arg type="s" name="reason"/>
+      <!-- Emitted when network connection lost -->
+    </signal>
+    
+    <signal name="MqttConnected">
+      <!-- Emitted when MQTT connection established -->
+    </signal>
+    
+    <signal name="MqttDisconnected">
+      <arg type="s" name="reason"/>
+      <!-- Emitted when MQTT connection lost -->
+    </signal>
+    
+    <signal name="MqttMessageReceived">
+      <arg type="s" name="topic"/>
+      <arg type="ay" name="payload"/>
+      <!-- Emitted when MQTT message received -->
+    </signal>
+    
+    <signal name="CommandReceived">
+      <arg type="s" name="commandType"/>
+      <arg type="ay" name="data"/>
+      <!-- Emitted when server command received (projector, relay, ac, sync, ota) -->
+    </signal>
+    
+    <signal name="LecturerListUpdated">
+      <arg type="i" name="lecturerCount"/>
+      <!-- Emitted when lecturer list synced -->
+    </signal>
+    
+    <signal name="OTAUpdateAvailable">
+      <arg type="s" name="version"/>
+      <arg type="s" name="downloadUrl"/>
+      <!-- Emitted when OTA update is available -->
+    </signal>
+
+    <signal name="OtaCommandReceived">
+      <arg type="ay" name="updateJson"/>
+      <!-- Emitted when an OTA/update command is received with full metadata JSON -->
+    </signal>
+  </interface>
+</node>

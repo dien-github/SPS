@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sps-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-sps}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sps_secret}
+      POSTGRES_DB: ${DB_NAME:-sps_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - sps-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sps} -d ${DB_NAME:-sps_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: sps-mqtt
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    ports:
+      - "1883:1883"
+    networks:
+      - sps-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sps-api
+    depends_on:
+      db:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-sps}
+      DB_PASSWORD: ${DB_PASSWORD:-sps_secret}
+      DB_NAME: ${DB_NAME:-sps_db}
+      MQTT_HOST: mqtt
+      MQTT_PORT: 1883
+      OTA_DIR: /app/ota
+      PORT: 3000
+    volumes:
+      - ./ota:/app/ota
+    ports:
+      - "3000:3000"
+    networks:
+      - sps-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+  mosquitto_log:
+
+networks:
+  sps-network:
+    driver: bridge

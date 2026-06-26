@@ -1,0 +1,34 @@
+{
+  "devices": [
+    {
+      "id": "light-class",
+      "type": "light",
+      "channel": 1,
+      "method": "ControlLight"
+    },
+    {
+      "id": "light-board",
+      "type": "light",
+      "channel": 2,
+      "method": "ControlLight"
+    },
+    {
+      "id": "curtain-main",
+      "type": "curtain",
+      "channel": 1,
+      "method": "ControlCurtain"
+    },
+    {
+      "id": "projector-main",
+      "type": "projector",
+      "channel": 1,
+      "method": "ControlProjector"
+    },
+    {
+      "id": "ac-main",
+      "type": "ac",
+      "channel": 1,
+      "method": "ControlAC"
+    }
+  ]
+}

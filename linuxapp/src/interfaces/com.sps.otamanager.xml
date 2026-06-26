@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="com.sps.otamanager">
+    <!-- OTA Manager Service Interface (Firmware & App Update Orchestrator) -->
+
+    <!-- Methods -->
+    <method name="GetOtaStatus">
+      <arg type="s" direction="out" name="status"/>
+      <!-- Returns: "IDLE", "DOWNLOADING", "FLASHING_MCU", "UPDATING_APPS", "VERIFYING", "COMPLETED", "FAILED" -->
+    </method>
+
+    <method name="StartMcuFirmwareUpdate">
+      <arg type="s" direction="in" name="firmwareUrl"/>
+      <arg type="s" direction="in" name="expectedChecksum"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Start MCU firmware update from URL -->
+    </method>
+
+    <method name="StartUpdate">
+      <arg type="s" direction="in" name="updateJson"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Start generic update from dashboard metadata JSON -->
+    </method>
+
+    <method name="StartAppServiceUpdate">
+      <arg type="s" direction="in" name="serviceName"/>
+      <arg type="s" direction="in" name="packageUrl"/>
+      <arg type="s" direction="in" name="expectedChecksum"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Update specific Linux app service binary -->
+    </method>
+
+    <method name="StartFullUpdate">
+      <arg type="s" direction="in" name="mcuFirmwareUrl"/>
+      <arg type="s" direction="in" name="mcuChecksum"/>
+      <arg type="s" direction="in" name="appPackageUrl"/>
+      <arg type="s" direction="in" name="appChecksum"/>
+      <arg type="b" direction="out" name="success"/>
+      <!-- Start full update (MCU firmware + Linux app services) -->
+    </method>
+
+    <method name="GetUpdateProgress">
+      <arg type="i" direction="out" name="percentage"/>
+      <!-- Get current update progress (0-100) -->
+    </method>
+
+    <method name="GetCurrentVersion">
+      <arg type="s" direction="out" name="version"/>
+      <!-- Get current system version -->
+    </method>
+
+    <method name="CancelUpdate">
+      <arg type="b" direction="out" name="success"/>
+      <!-- Cancel ongoing update -->
+    </method>
+
+    <!-- Signals -->
+    <signal name="UpdateStatusChanged">
+      <arg type="s" name="status"/>
+      <!-- Emitted when update status changes -->
+    </signal>
+
+    <signal name="UpdateProgress">
+      <arg type="i" name="percentage"/>
+      <arg type="s" name="stage"/>
+      <!-- Emitted during update with progress percentage -->
+    </signal>
+
+    <signal name="UpdateCompleted">
+      <arg type="b" name="success"/>
+      <arg type="s" name="message"/>
+      <!-- Emitted when update completes (success or failure) -->
+    </signal>
+
+    <signal name="McuFirmwareUpdateRequired">
+      <arg type="s" name="version"/>
+      <arg type="s" name="downloadUrl"/>
+      <!-- Emitted when MCU firmware version mismatch detected -->
+    </signal>
+  </interface>
+</node>

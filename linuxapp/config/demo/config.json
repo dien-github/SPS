@@ -3,7 +3,7 @@
   "mqtt_port": 1883,
   "room_id": "A01.01",
   "device_id": "PCD-SPS-A0101",
-  "static_ip": "192.168.1.11",
+  "static_ip": "192.168.2.2",
   "declared_status": "Active",
   "enable_pc_control": false,
   "pc_mac": "",

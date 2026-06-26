@@ -25,7 +25,7 @@ const VIRTUAL_CLASSROOMS = [
   {
     room_code: 'A01.01',
     pcd_code: 'PCD-SPS-A0101',
-    static_ip: '192.168.1.11',
+    static_ip: '192.168.2.2',
     declared_status: 'Active',
     peripherals: ['projector RS232', 'light', 'curtain', 'screen', 'AC IR', 'PC WoL'],
   },

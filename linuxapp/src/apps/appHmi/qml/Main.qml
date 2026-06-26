@@ -24,6 +24,8 @@ ApplicationWindow {
     property string szFooterStatus: "Ready"
     property bool bManualLoginPending: false
     property string szManualLoginStatus: ""
+    readonly property string szManualLoginLecturerName: "Nguyen Minh Son"
+    readonly property string szManualLoginRfid: "12345678"
 
     property string warningAlertType: ""
     property string warningMessage: ""
@@ -78,11 +80,11 @@ ApplicationWindow {
             return
 
         bManualLoginPending = true
-        szManualLoginStatus = "Logging in..."
+        szManualLoginStatus = "Logging in " + szManualLoginLecturerName + "..."
 
-        if (!dbusClient.unlockScreen("")) {
+        if (!dbusClient.unlockScreen(szManualLoginRfid)) {
             bManualLoginPending = false
-            szManualLoginStatus = "Manual login failed"
+            szManualLoginStatus = "Login failed for " + szManualLoginLecturerName
         }
     }
 
@@ -101,7 +103,7 @@ ApplicationWindow {
                 bIsLocked = false
             } else if (bManualLoginPending && status === "ERROR") {
                 bManualLoginPending = false
-                szManualLoginStatus = "Manual login failed"
+                szManualLoginStatus = "Login failed for " + szManualLoginLecturerName
             } else if (status === "LOCKED") {
                 bManualLoginPending = false
             }
@@ -705,7 +707,7 @@ ApplicationWindow {
                 width: parent.width
                 height: Math.max(44, Math.round(54 * lockScreen.uiScale))
                 enabled: !appWindow.bManualLoginPending
-                text: appWindow.bManualLoginPending ? "Logging in..." : "Manual Login"
+                text: appWindow.bManualLoginPending ? "Logging in..." : "Login Nguyen Minh Son"
                 font.pixelSize: Math.round(18 * lockScreen.uiScale)
                 font.bold: true
                 onClicked: appWindow.requestManualLogin()

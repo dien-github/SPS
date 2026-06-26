@@ -28,3 +28,4 @@ node_modules/
 
 # Large files
 *.img.xz
+server/ota/staging/*
